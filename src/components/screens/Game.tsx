@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useUser } from "@/context/UserContext";
 import PopupOverlay from "@/components/common/PopupOverlay";
 import PopupMatchOver from "@/components/popups/PopupMatchOver";
+import { api, BoardCell, Match, MatchResponse, MoveResponse } from "@/lib/api";
 
 type CellStatus = "closed" | 1 | 2 | 3 | 4;
 
@@ -20,6 +21,8 @@ interface GameProps {
   opponentName: string;
   initialCells?: Cell[];
   onPlayAgain?: () => void;
+  matchId?: string;
+  myPlayerId?: string;
 }
 
 const ASTRA_COMMENTS = [
@@ -86,8 +89,18 @@ export default function Game({
   opponentName,
   initialCells,
   onPlayAgain,
+  matchId,
+  myPlayerId,
 }: GameProps) {
-  const isMyTurn = currentTurn === playerName;
+  const { user } = useUser();
+  const effectiveMyPlayerId = myPlayerId || user.accId;
+
+  // currentTurnState tracks live turn (updated from API polls)
+  const [currentTurnState, setCurrentTurnState] = useState(currentTurn);
+  const isMyTurn = matchId
+    ? currentTurnState === effectiveMyPlayerId
+    : currentTurnState === playerName;
+
   const headerRef = useRef<HTMLDivElement>(null);
   const [gameTop, setGameTop] = useState(0);
   const [gameH, setGameH] = useState(0);
@@ -126,8 +139,14 @@ export default function Game({
   );
 
   const [myTotal, setMyTotal] = useState(0);
-  const [opponentTotal] = useState(0);
+  const [opponentTotal, setOpponentTotal] = useState(0);
   const [showMatchOver, setShowMatchOver] = useState(false);
+  const [matchResultData, setMatchResultData] = useState<{
+    result: string;
+    profit: string;
+    points: string;
+    title: string;
+  } | null>(null);
 
   const [youGot, setYouGot] = useState<{
     visible: boolean;
@@ -135,37 +154,164 @@ export default function Game({
     commentFile: string;
   }>({ visible: false, amount: 0, commentFile: "" });
 
+  // Stable map: cell id → visual variant (assigned once per opened cell)
+  const cellVariantsRef = useRef<Map<number, 1 | 2 | 3 | 4>>(new Map());
+
+  const fmtEth = (n: number) => `${n.toFixed(8)} ETH`;
+
+  // Update local cell state from backend board
+  const updateFromBoard = useCallback(
+    (board: BoardCell[], myPid: string) => {
+      const newCells = board.map((bc) => {
+        if (bc.openedBy === null) {
+          return { id: bc.id, status: "closed" as CellStatus, value: bc.value ?? 0 };
+        }
+        if (!cellVariantsRef.current.has(bc.id)) {
+          const isMe = bc.openedBy === myPid;
+          const variant = isMe
+            ? ((bc.id % 2 === 0 ? 1 : 2) as 1 | 2)
+            : ((bc.id % 2 === 0 ? 3 : 4) as 3 | 4);
+          cellVariantsRef.current.set(bc.id, variant);
+        }
+        return {
+          id: bc.id,
+          status: cellVariantsRef.current.get(bc.id)!,
+          value: bc.value ?? 0,
+        };
+      });
+      setCells(newCells);
+      const myTot = board
+        .filter((bc) => bc.openedBy === myPid)
+        .reduce((sum, bc) => sum + (bc.value ?? 0), 0);
+      const oppTot = board
+        .filter((bc) => bc.openedBy !== null && bc.openedBy !== myPid)
+        .reduce((sum, bc) => sum + (bc.value ?? 0), 0);
+      setMyTotal(myTot);
+      setOpponentTotal(oppTot);
+    },
+    [],
+  );
+
+  // Fetch final result and show match-over popup
+  const fetchResult = useCallback(
+    async (mId: string, myPid: string) => {
+      try {
+        const data = await api.get<{ token: string; match: Match }>(
+          `/game/result/${mId}`,
+        );
+        const board = data.match.board;
+        updateFromBoard(board, myPid);
+        const myTot = board
+          .filter((bc) => bc.openedBy === myPid)
+          .reduce((sum, bc) => sum + (bc.value ?? 0), 0);
+        const oppTot = board
+          .filter((bc) => bc.openedBy !== null && bc.openedBy !== myPid)
+          .reduce((sum, bc) => sum + (bc.value ?? 0), 0);
+        const bid = data.match.balances[myPid] ?? 0;
+        const profitAbs = myTot - bid;
+        const profitPct = bid > 0 ? Math.round((profitAbs / bid) * 100) : 0;
+        const profitStr = profitPct >= 0 ? `+ ${profitPct} %` : `${profitPct} %`;
+        setMatchResultData({
+          result: fmtEth(myTot),
+          profit: profitStr,
+          points: "+ 10 PTS",
+          title: myTot >= oppTot ? "You Won!" : "Nice try!",
+        });
+      } catch (err) {
+        console.error("Result fetch error:", err);
+      } finally {
+        setTimeout(() => setShowMatchOver(true), 1000);
+      }
+    },
+    [updateFromBoard],
+  );
+
+  // Poll /game/match every 2 s when matchId is present
+  useEffect(() => {
+    if (!matchId) return;
+    const pid = effectiveMyPlayerId;
+    const interval = setInterval(async () => {
+      try {
+        const data = await api.get<MatchResponse>("/game/match");
+        updateFromBoard(data.match.board, pid);
+        setCurrentTurnState(data.match.currentTurn ?? "");
+        if (data.match.status === "finished") {
+          clearInterval(interval);
+          fetchResult(matchId, pid);
+        }
+      } catch (err) {
+        console.error("Match poll error:", err);
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [matchId, effectiveMyPlayerId, updateFromBoard, fetchResult]);
+
   const handleCellClick = useCallback(
-    (id: number) => {
+    async (id: number) => {
       if (!isMyTurn) return;
       const cell = cells.find((c) => c.id === id);
       if (!cell || cell.status !== "closed") return;
-      const randomStatus = (Math.floor(Math.random() * 4) + 1) as 1 | 2 | 3 | 4;
-      const randomComment =
-        ASTRA_COMMENTS[Math.floor(Math.random() * ASTRA_COMMENTS.length)];
-      const newCells = cells.map((c) =>
-        c.id === id ? { ...c, status: randomStatus } : c,
-      );
-      setCells(newCells);
-      setMyTotal((prev) => prev + cell.value);
-      setYouGot({
-        visible: true,
-        amount: cell.value,
-        commentFile: randomComment,
-      });
-      setTimeout(
-        () => setYouGot({ visible: false, amount: 0, commentFile: "" }),
-        3000,
-      );
-      // Показываем попап если все клетки открыты — TODO: заменить на сигнал от бэкенда
-      if (newCells.filter((c) => c.status !== "closed").length === 12) {
-        setTimeout(() => setShowMatchOver(true), 3500);
+
+      if (!matchId) {
+        // Mock fallback (no backend)
+        const randomStatus = (Math.floor(Math.random() * 4) + 1) as 1 | 2 | 3 | 4;
+        const randomComment =
+          ASTRA_COMMENTS[Math.floor(Math.random() * ASTRA_COMMENTS.length)];
+        const newCells = cells.map((c) =>
+          c.id === id ? { ...c, status: randomStatus } : c,
+        );
+        setCells(newCells);
+        setMyTotal((prev) => prev + cell.value);
+        setYouGot({
+          visible: true,
+          amount: cell.value,
+          commentFile: randomComment,
+        });
+        setTimeout(
+          () => setYouGot({ visible: false, amount: 0, commentFile: "" }),
+          3000,
+        );
+        if (newCells.filter((c) => c.status !== "closed").length === 12) {
+          setTimeout(() => setShowMatchOver(true), 3500);
+        }
+        return;
+      }
+
+      // Real API move
+      try {
+        const clientMoveId = `${Date.now()}-${id}`;
+        const data = await api.post<MoveResponse>("/game/move", {
+          matchId,
+          boxId: id,
+          clientMoveId,
+        });
+        updateFromBoard(data.match.board, effectiveMyPlayerId);
+        setCurrentTurnState(data.match.currentTurn ?? "");
+
+        const openedCell = data.match.board.find((bc) => bc.id === id);
+        if (openedCell && openedCell.value !== undefined) {
+          const randomComment =
+            ASTRA_COMMENTS[Math.floor(Math.random() * ASTRA_COMMENTS.length)];
+          setYouGot({
+            visible: true,
+            amount: openedCell.value,
+            commentFile: randomComment,
+          });
+          setTimeout(
+            () => setYouGot({ visible: false, amount: 0, commentFile: "" }),
+            3000,
+          );
+        }
+
+        if (data.match.status === "finished") {
+          fetchResult(matchId, effectiveMyPlayerId);
+        }
+      } catch (err) {
+        console.error("Move error:", err);
       }
     },
-    [cells, isMyTurn],
+    [cells, isMyTurn, matchId, effectiveMyPlayerId, updateFromBoard, fetchResult],
   );
-
-  const fmtEth = (n: number) => `${n.toFixed(8)} ETH`;
 
   const cellSize = `${CELL_PCT}cqw`;
   const gapX = `${GAP_X_PCT}cqw`;
@@ -229,7 +375,7 @@ export default function Game({
           className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap"
           style={{ top: "1.6%", zIndex: 3 }}
         >
-          <GameTimer key={currentTurn} />
+          <GameTimer key={currentTurnState} />
         </div>
 
         <div
@@ -598,10 +744,10 @@ export default function Game({
                 setShowMatchOver(false);
                 onPlayAgain?.();
               }}
-              result={fmtEth(myTotal)}
-              profit="+ 20 %"
-              points="+ 10 PTS"
-              title="Nice try!"
+              result={matchResultData?.result ?? fmtEth(myTotal)}
+              profit={matchResultData?.profit ?? "+ 20 %"}
+              points={matchResultData?.points ?? "+ 10 PTS"}
+              title={matchResultData?.title ?? "Nice try!"}
             />
           </PopupOverlay>
         </div>

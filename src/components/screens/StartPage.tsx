@@ -12,6 +12,22 @@ import SearchingMatch from "@/components/searching/SearchingMatch";
 import CancelledMatch from "@/components/searching/CancelledMatch";
 import Game from "@/components/screens/Game";
 import { useUser } from "@/context/UserContext";
+import { api, Match, MatchResponse, JoinResponse, ResumeResponse, BoardCell } from "@/lib/api";
+
+type CellStatus = "closed" | 1 | 2 | 3 | 4;
+interface Cell { id: number; status: CellStatus; value: number }
+
+function boardToCells(board: BoardCell[], myPlayerId: string): Cell[] {
+  return board.map((bc) => ({
+    id: bc.id,
+    status: (bc.openedBy === null
+      ? "closed"
+      : bc.openedBy === myPlayerId
+        ? (bc.id % 2 === 0 ? 1 : 2)
+        : (bc.id % 2 === 0 ? 3 : 4)) as CellStatus,
+    value: bc.value ?? 0,
+  }));
+}
 
 type OverlayType =
   | "welcome"
@@ -40,23 +56,83 @@ function isPopupType(v: OverlayType): v is PopupType {
 
 export default function StartPage() {
   const [active, setActive] = useState<OverlayType>(null);
-  const { user, setUser, logout } = useUser();
+  const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
+  const { user, logout } = useUser();
 
   const close = () => setActive(null);
 
-  //to do: delete this when back will give me starting matches *only for test webinterface*
+  // Resume active session on mount
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    const resume = async () => {
+      try {
+        const data = await api.post<ResumeResponse>("/game/resume");
+        if (data.match.status === "active") {
+          setCurrentMatch(data.match);
+          setActive("game");
+        }
+      } catch {
+        // no active session — stay on start page
+      }
+    };
+    resume();
+  }, []);
+
+  // Poll for match while searching
   useEffect(() => {
     if (active !== "searching") return;
-    const timer = setTimeout(() => {
-      const result: OverlayType = Math.random() < 0.5 ? "game" : "cancelled";
-      setActive(result);
-    }, 15000);
-    return () => clearTimeout(timer);
+    const interval = setInterval(async () => {
+      try {
+        const data = await api.get<MatchResponse>("/game/match");
+        setCurrentMatch(data.match);
+        if (data.match.status === "active") {
+          setActive("game");
+        } else if (data.match.status === "finished") {
+          setActive("cancelled");
+        }
+      } catch (err) {
+        console.error("Match poll error:", err);
+      }
+    }, 2000);
+    return () => clearInterval(interval);
   }, [active]);
+
+  const handleStartGame = async () => {
+    try {
+      const token = localStorage.getItem("token") ?? "";
+      const data = await api.post<JoinResponse>("/game/join", { bid: "0.001", token });
+      setCurrentMatch(data.match);
+      if (data.match.status === "active") {
+        setActive("game");
+      } else {
+        setActive("searching");
+      }
+    } catch (err) {
+      console.error("Join error:", err);
+      setActive("searching");
+    }
+  };
+
+  const getOpponentId = (match: Match): string => {
+    const opp = match.players.find((p) => p !== user.accId);
+    return opp ?? "PlayerName";
+  };
 
   if (active === "game") {
     return (
-      <Game currentTurn="You" playerName="You" opponentName="PlayerName" />
+      <Game
+        currentTurn={currentMatch?.currentTurn ?? "You"}
+        playerName="You"
+        opponentName={currentMatch ? getOpponentId(currentMatch) : "PlayerName"}
+        initialCells={currentMatch ? boardToCells(currentMatch.board, user.accId) : undefined}
+        matchId={currentMatch?.matchId}
+        myPlayerId={user.accId}
+        onPlayAgain={() => {
+          setActive(null);
+          handleStartGame();
+        }}
+      />
     );
   }
 
@@ -298,7 +374,7 @@ export default function StartPage() {
             style={{ gap: "clamp(8px, 3.73vw, 15px)" }}
           >
             <button
-              onClick={() => setActive("searching")}
+              onClick={handleStartGame}
               className="flex items-center justify-center shrink-0 cursor-pointer"
               style={{
                 background: "rgba(0, 227, 185, 0.3)",
@@ -455,7 +531,10 @@ export default function StartPage() {
             />
           )}
           {active === "cancelled" && (
-            <CancelledMatch onStartAnother={() => setActive("searching")} />
+            <CancelledMatch onStartAnother={() => {
+              setActive(null);
+              handleStartGame();
+            }} />
           )}
           {active === "menu" &&
             (user.isLoggedIn ? (
@@ -469,14 +548,7 @@ export default function StartPage() {
             ) : (
               <MenuUnlogged
                 onClose={close}
-                onLogin={() => {
-                  setUser({
-                    accId: "Paramour",
-                    ethBalance: "12.53 ETH",
-                    pts: "530 PTS",
-                    isLoggedIn: true,
-                  });
-                }}
+                onLogin={close}
               />
             ))}
         </PopupOverlay>

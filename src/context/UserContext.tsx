@@ -31,7 +31,10 @@ const UserContext = createContext<UserContextType>({
 export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User>(defaultUser);
 
-  const logout = () => setUser(defaultUser);
+  const logout = () => {
+    localStorage.removeItem("token");
+    setUser(defaultUser);
+  };
 
   return (
     <UserContext.Provider value={{ user, setUser, logout }}>

@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import { useUser } from "@/context/UserContext";
+import { api, AuthResponse } from "@/lib/api";
+import { useLaunchParams } from "@telegram-apps/sdk-react";
 
 interface MenuUnloggedProps {
   onClose: () => void;
@@ -9,7 +11,40 @@ interface MenuUnloggedProps {
 }
 
 export default function MenuUnlogged({ onClose, onLogin }: MenuUnloggedProps) {
-  const { user } = useUser();
+  const { user, setUser } = useUser();
+  const launchParams = useLaunchParams() as { initData?: { user?: { id?: number } } };
+  const telegramId = launchParams.initData?.user?.id;
+
+  const handleAuth = async (provider: "telegram" | "google") => {
+    try {
+      let data: AuthResponse;
+
+      if (provider === "telegram") {
+        if (!telegramId) {
+          console.warn("Telegram ID not available");
+          return;
+        }
+        data = await api.post<AuthResponse>("/auth/telegram", {
+          telegramId: String(telegramId),
+        });
+      } else {
+        // TODO: Integrate Google OAuth (obtain googleId via Google Identity Services)
+        console.warn("Google OAuth not yet integrated");
+        return;
+      }
+
+      setUser({
+        accId: data.player.playerId,
+        ethBalance: "0 ETH",
+        pts: `${data.player.points} PTS`,
+        isLoggedIn: true,
+      });
+      onLogin?.();
+      onClose();
+    } catch (err) {
+      console.error(`Auth error (${provider}):`, err);
+    }
+  };
 
   return (
     <div
@@ -66,7 +101,7 @@ export default function MenuUnlogged({ onClose, onLogin }: MenuUnloggedProps) {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onLogin?.();
+              handleAuth("google");
             }}
             className="flex items-center justify-center w-full cursor-pointer"
             style={{
@@ -103,7 +138,7 @@ export default function MenuUnlogged({ onClose, onLogin }: MenuUnloggedProps) {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onLogin?.();
+              handleAuth("telegram");
             }}
             className="flex items-center justify-center w-full cursor-pointer"
             style={{

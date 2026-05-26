@@ -1,10 +1,25 @@
+"use client";
+
 import Image from "next/image";
+import { useUser } from "@/context/UserContext";
+import { api, ClaimPointsResponse } from "@/lib/api";
 
 interface PopupDailyBonusProps {
   onClose: () => void;
 }
 
 export default function PopupDailyBonus({ onClose }: PopupDailyBonusProps) {
+  const { user, setUser } = useUser();
+
+  const handleClaim = async () => {
+    try {
+      const data = await api.post<ClaimPointsResponse>("/game/claim-points");
+      setUser({ ...user, pts: `${data.points} PTS` });
+    } catch (err) {
+      console.error("Claim points error:", err);
+    }
+  };
+
   return (
     <div
       className="flex items-center justify-center w-full h-full"
@@ -64,6 +79,7 @@ export default function PopupDailyBonus({ onClose }: PopupDailyBonusProps) {
 
         <div className="relative" style={{ zIndex: 2 }}>
           <button
+            onClick={handleClaim}
             className="flex items-center justify-center w-full cursor-pointer"
             style={{ backgroundColor: "#00e3b9", border: "none", borderRadius: "clamp(9px, 2.91vw, 11.679px)", height: "clamp(48px, 6.41svh, 56px)", gap: "clamp(8px, 2.99vw, 12px)", boxShadow: "0px 4px 4px 0px rgba(0,0,0,0.25)" }}
           >
