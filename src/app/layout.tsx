@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { UserProvider } from "@/context/UserContext";
+import { SoundProvider } from "@/context/SoundContext";
 
 export const metadata: Metadata = {
   title: "Astra Game",
@@ -12,11 +13,19 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const devTgMock = process.env.NODE_ENV === "development"
+    ? `if(!window.Telegram){window.Telegram={WebApp:{initDataUnsafe:{user:{id:111111111},start_param:undefined},ready:function(){},expand:function(){},close:function(){}}}};console.log('[DEV] Telegram mock: id=111111111');`
+    : null;
+
   return (
     <html lang="en">
+      <head>
+        {devTgMock && <script dangerouslySetInnerHTML={{ __html: devTgMock }} />}
+      </head>
       <body>
         <UserProvider>
-          {/* Desktop off loader ≥ 1000px */}
+        <SoundProvider>
+            {/* Hidden on mobile, shown on desktop ≥ 1000px */}
           <div
             className="hidden min-[1000px]:flex items-center justify-center h-screen w-screen"
             style={{ backgroundColor: "#0d0d0d" }}
@@ -33,7 +42,6 @@ export default function RootLayout({
             </p>
           </div>
 
-          {/* mobile < 1000px */}
           <div
             className="min-[1000px]:hidden w-full flex justify-center"
             style={{ backgroundColor: "#0d0d0d", minHeight: "100svh" }}
@@ -42,6 +50,7 @@ export default function RootLayout({
               {children}
             </div>
           </div>
+        </SoundProvider>
         </UserProvider>
       </body>
     </html>

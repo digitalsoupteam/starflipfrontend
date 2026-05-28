@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import { useState } from "react";
 import { useUser } from "@/context/UserContext";
-import { api, ClaimPointsResponse } from "@/lib/api";
+import { api, ApiError, ClaimPointsResponse } from "@/lib/api";
 
 interface PopupDailyBonusProps {
   onClose: () => void;
@@ -10,13 +11,41 @@ interface PopupDailyBonusProps {
 
 export default function PopupDailyBonus({ onClose }: PopupDailyBonusProps) {
   const { user, setUser } = useUser();
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [devMsg, setDevMsg] = useState<string | null>(null);
 
-  const handleClaim = async () => {
+  const claimPoints = async (): Promise<{ ok: boolean; points?: number; error?: string }> => {
     try {
       const data = await api.post<ClaimPointsResponse>("/game/claim-points");
-      setUser({ ...user, pts: `${data.points} PTS` });
+      return { ok: true, points: data.points };
     } catch (err) {
-      console.error("Claim points error:", err);
+      if (err instanceof ApiError && err.status === 429) {
+        return { ok: false, error: "Come back tomorrow" };
+      }
+      return { ok: false, error: "Connection error, try again" };
+    }
+  };
+
+  const handleClaim = async () => {
+    setClaimError(null);
+    const result = await claimPoints();
+    if (result.ok && result.points !== undefined) {
+      setUser({ ...user, pts: `${result.points} PTS` });
+      onClose();
+    } else {
+      setClaimError(result.error ?? "Connection error, try again");
+    }
+  };
+
+  // TODO: remove before production
+  const handleDevClaim = async () => {
+    setDevMsg(null);
+    const result = await claimPoints();
+    if (result.ok && result.points !== undefined) {
+      setUser({ ...user, pts: `${result.points} PTS` });
+      setDevMsg(`✓ ${result.points} PTS`);
+    } else {
+      setDevMsg(result.error ?? "Connection error, try again");
     }
   };
 
@@ -77,7 +106,7 @@ export default function PopupDailyBonus({ onClose }: PopupDailyBonusProps) {
           </button>
         </div>
 
-        <div className="relative" style={{ zIndex: 2 }}>
+        <div className="relative flex flex-col" style={{ zIndex: 2, gap: "8px" }}>
           <button
             onClick={handleClaim}
             className="flex items-center justify-center w-full cursor-pointer"
@@ -90,6 +119,32 @@ export default function PopupDailyBonus({ onClose }: PopupDailyBonusProps) {
               Claim 30 PTS
             </span>
           </button>
+
+          {claimError && (
+            <p style={{ fontFamily: "'Wix Madefor Display', sans-serif", fontSize: "clamp(12px, 3.73vw, 15px)", color: "#ff5100", textAlign: "center", lineHeight: 1.3 }}>
+              {claimError}
+            </p>
+          )}
+
+          {/* TODO: remove before production */}
+          {process.env.NODE_ENV === "development" && (
+            <>
+              <button
+                onClick={handleDevClaim}
+                className="flex items-center justify-center w-full cursor-pointer"
+                style={{ backgroundColor: "transparent", border: "1px dashed #545454", borderRadius: "clamp(9px, 2.91vw, 11.679px)", height: "clamp(40px, 5.5svh, 48px)", marginTop: "4px" }}
+              >
+                <span className="uppercase whitespace-nowrap" style={{ fontFamily: "'Tektur', sans-serif", fontSize: "clamp(12px, 3.73vw, 15px)", fontVariationSettings: "'wdth' 100", fontWeight: 500, color: "#545454", lineHeight: 1 }}>
+                  DEV: Claim Points
+                </span>
+              </button>
+              {devMsg && (
+                <p style={{ fontFamily: "'Wix Madefor Display', sans-serif", fontSize: "clamp(12px, 3.73vw, 15px)", color: devMsg.startsWith("✓") ? "#00e3b9" : "#ff5100", textAlign: "center", lineHeight: 1.3 }}>
+                  {devMsg}
+                </p>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

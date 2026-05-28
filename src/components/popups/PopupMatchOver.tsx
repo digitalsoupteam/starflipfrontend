@@ -3,11 +3,10 @@ import Image from "next/image";
 interface PopupMatchOverProps {
   onClose: () => void;
   onPlayAgain: () => void;
-  // Результаты игры — TODO: придут от бэкенда
-  result?: string;      // "0.0000414 ETH"
-  profit?: string;      // "+ 20 %"
-  points?: string;      // "+ 10 PTS"
-  title?: string;       // "Nice try!" / "You won!" / etc.
+  result?: string;
+  profit?: string;
+  points?: string;
+  title?: string;
 }
 
 export default function PopupMatchOver({
@@ -23,7 +22,6 @@ export default function PopupMatchOver({
       className="flex items-center justify-center w-full h-full"
       onClick={onClose}
     >
-      {/* Карточка — Figma: w=362 h=632 p=25 rounded=18 */}
       <div
         className="relative overflow-hidden"
         style={{
@@ -76,6 +74,24 @@ export default function PopupMatchOver({
             sizes="44vw"
           />
         </div>
+
+        <button
+          onClick={onClose}
+          style={{
+            position: "absolute",
+            top: "clamp(14px, 3.73vw, 18px)",
+            right: "clamp(14px, 3.73vw, 18px)",
+            width: "clamp(28px, 8.96vw, 36px)",
+            height: "clamp(28px, 8.96vw, 36px)",
+            background: "none",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+            zIndex: 4,
+          }}
+        >
+          <Image src="/assets/icons/x.svg" alt="Close" fill className="object-contain" />
+        </button>
 
         <div
           className="relative flex flex-col"

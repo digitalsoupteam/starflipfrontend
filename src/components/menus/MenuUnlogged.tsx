@@ -2,47 +2,118 @@
 
 import Image from "next/image";
 import { useUser } from "@/context/UserContext";
-import { api, AuthResponse } from "@/lib/api";
-import { useLaunchParams } from "@telegram-apps/sdk-react";
+import { api, ApiError, weiToEth, AuthResponse, ClaimPointsResponse, FaucetResponse } from "@/lib/api";
+
+const HOW_TO_PLAY_URL =
+  "https://www.notion.so/StarFlip-How-to-Play-36e95daac839807aab01ccbc1bc3d8a5?pvs=28";
 
 interface MenuUnloggedProps {
   onClose: () => void;
   onLogin?: () => void;
+  onFirstLogin?: () => void; // triggers WelcomeBonus popup on first-ever login
 }
 
-export default function MenuUnlogged({ onClose, onLogin }: MenuUnloggedProps) {
-  const { user, setUser } = useUser();
-  const launchParams = useLaunchParams() as { initData?: { user?: { id?: number } } };
-  const telegramId = launchParams.initData?.user?.id;
+export default function MenuUnlogged({ onClose, onLogin, onFirstLogin }: MenuUnloggedProps) {
+  const { setUser } = useUser();
+
+  // Read at click time, not at render time — avoids issues if TG SDK loads late
+  const getTelegramId = (): string | undefined => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString();
+    } catch {
+      return undefined;
+    }
+  };
+
+  // TMA passes the referral via start_param; browser uses ?ref= query param
+  const getReferralCode = (): string | undefined => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const startParam = (window as any).Telegram?.WebApp?.initDataUnsafe?.start_param as string | undefined;
+      if (startParam?.startsWith("ref_")) return startParam;
+    } catch {}
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get("ref");
+      if (ref) return ref.startsWith("ref_") ? ref : `ref_${ref}`;
+    } catch {}
+    return undefined;
+  };
+
+  const runPostAuthFlow = async (
+    playerId: string,
+    initialPoints: number,
+    initialBalance: string,
+    inviteCode: string,
+    inviteLink: string,
+  ) => {
+    const ethBalance = `${weiToEth(initialBalance)} ETH`;
+    setUser({ accId: playerId, ethBalance, pts: `${initialPoints} PTS`, isLoggedIn: true, inviteCode, inviteLink });
+    onLogin?.();
+    onClose();
+
+    try {
+      const claimData = await api.post<ClaimPointsResponse>("/game/claim-points");
+      setUser({ accId: playerId, ethBalance, pts: `${claimData.points} PTS`, isLoggedIn: true, inviteCode, inviteLink });
+
+      try {
+        const faucetData = await api.post<FaucetResponse>("/game/faucet");
+        setUser({ accId: playerId, ethBalance: `${weiToEth(faucetData.balance)} ETH`, pts: `${claimData.points} PTS`, isLoggedIn: true, inviteCode, inviteLink });
+      } catch {
+        // non-critical — mainnet returns 403, testnet may have cooldown
+      }
+
+      onFirstLogin?.();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 429) {
+        // returning user — daily bonus already claimed today
+      } else {
+        console.error("Post-auth flow error:", err);
+      }
+    }
+  };
 
   const handleAuth = async (provider: "telegram" | "google") => {
     try {
       let data: AuthResponse;
+      const referralCode = getReferralCode();
 
       if (provider === "telegram") {
-        if (!telegramId) {
-          console.warn("Telegram ID not available");
-          return;
-        }
-        data = await api.post<AuthResponse>("/auth/telegram", {
-          telegramId: String(telegramId),
-        });
+        const telegramId = getTelegramId();
+        if (!telegramId) { console.warn("Telegram ID not available"); return; }
+        data = await api.post<AuthResponse>("/auth/telegram", { telegramId, referralCode });
       } else {
-        // TODO: Integrate Google OAuth (obtain googleId via Google Identity Services)
         console.warn("Google OAuth not yet integrated");
         return;
       }
 
-      setUser({
-        accId: data.player.playerId,
-        ethBalance: "0 ETH",
-        pts: `${data.player.points} PTS`,
-        isLoggedIn: true,
-      });
-      onLogin?.();
-      onClose();
+      await runPostAuthFlow(
+        data.player.playerId,
+        data.player.points,
+        data.player.balance ?? "0",
+        data.player.inviteCode ?? "",
+        data.player.inviteLink ?? "",
+      );
     } catch (err) {
       console.error(`Auth error (${provider}):`, err);
+    }
+  };
+
+  // TODO: remove before production
+  const handleDevLogin = async (telegramId: string) => {
+    try {
+      const referralCode = getReferralCode();
+      const data = await api.post<AuthResponse>("/auth/telegram", { telegramId, referralCode });
+      await runPostAuthFlow(
+        data.player.playerId,
+        data.player.points,
+        data.player.balance ?? "0",
+        data.player.inviteCode ?? "",
+        data.player.inviteLink ?? "",
+      );
+    } catch (err) {
+      console.error("Dev login error:", err);
     }
   };
 
@@ -93,48 +164,10 @@ export default function MenuUnlogged({ onClose, onLogin }: MenuUnloggedProps) {
             whiteSpace: "nowrap",
           }}
         >
-          Login with
+          Log in and claim your daily bonus 
         </p>
 
         <div className="flex flex-col w-full" style={{ gap: "clamp(8px, 1.37svh, 12px)" }}>
-          {/* Google */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleAuth("google");
-            }}
-            className="flex items-center justify-center w-full cursor-pointer"
-            style={{
-              backgroundColor: "#00e3b9",
-              border: "none",
-              borderRadius: "clamp(9px, 2.91vw, 11.679px)",
-              height: "clamp(48px, 6.41svh, 56px)",
-              gap: "clamp(8px, 2.99vw, 12px)",
-              boxShadow: "0px 4px 4px 0px rgba(0,0,0,0.25)",
-              opacity: user.isLoggedIn ? 0.4 : 1,
-              cursor: user.isLoggedIn ? "default" : "pointer",
-            }}
-            disabled={user.isLoggedIn}
-          >
-            <div style={{ width: "24px", height: "24px", position: "relative", flexShrink: 0 }}>
-              <Image src="/assets/icons/google.svg" alt="Google" fill className="object-contain" />
-            </div>
-            <span
-              className="uppercase whitespace-nowrap"
-              style={{
-                fontFamily: "'Tektur', sans-serif",
-                fontSize: "clamp(14px, 4.48vw, 18px)",
-                fontVariationSettings: "'wdth' 100",
-                fontWeight: 500,
-                color: "#0d0d0d",
-                lineHeight: 1,
-              }}
-            >
-              {user.isLoggedIn ? "Google — Connected" : "Google"}
-            </span>
-          </button>
-
-          {/* Telegram */}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -150,7 +183,7 @@ export default function MenuUnlogged({ onClose, onLogin }: MenuUnloggedProps) {
               boxShadow: "0px 4px 4px 0px rgba(0,0,0,0.25)",
             }}
           >
-            <div style={{ width: "24px", height: "24px", position: "relative", flexShrink: 0, filter: "brightness(0)",  }}>
+            <div style={{ width: "24px", height: "24px", position: "relative", flexShrink: 0, filter: "brightness(0)" }}>
               <Image src="/assets/icons/telegram.svg" alt="Telegram" fill className="object-contain" />
             </div>
             <span
@@ -167,6 +200,38 @@ export default function MenuUnlogged({ onClose, onLogin }: MenuUnloggedProps) {
               Telegram
             </span>
           </button>
+
+          {/* TODO: remove before production */}
+          {[
+            { label: "Dev Player 1", id: "111111111" },
+            { label: "Dev Player 2", id: "222222222" },
+          ].map(({ label, id }) => (
+            <button
+              key={id}
+              onClick={(e) => { e.stopPropagation(); handleDevLogin(id); }}
+              className="flex items-center justify-center w-full cursor-pointer"
+              style={{
+                backgroundColor: "transparent",
+                border: "1px dashed #545454",
+                borderRadius: "clamp(9px, 2.91vw, 11.679px)",
+                height: "clamp(40px, 5.5svh, 48px)",
+              }}
+            >
+              <span
+                className="uppercase whitespace-nowrap"
+                style={{
+                  fontFamily: "'Tektur', sans-serif",
+                  fontSize: "clamp(12px, 3.73vw, 15px)",
+                  fontVariationSettings: "'wdth' 100",
+                  fontWeight: 500,
+                  color: "#545454",
+                  lineHeight: 1,
+                }}
+              >
+                {label}
+              </span>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -177,6 +242,7 @@ export default function MenuUnlogged({ onClose, onLogin }: MenuUnloggedProps) {
       >
         <div className="flex items-center" style={{ gap: "16px" }}>
           <button
+            onClick={() => window.open("https://x.com/StarFlipGaming", "_blank")}
             style={{
               width: "24px", height: "24px", position: "relative",
               background: "none", border: "none", padding: 0, cursor: "pointer",
@@ -186,6 +252,7 @@ export default function MenuUnlogged({ onClose, onLogin }: MenuUnloggedProps) {
             <Image src="/assets/icons/twitter.svg" alt="Twitter" fill className="object-contain" />
           </button>
           <button
+            onClick={() => window.open("https://t.me/StarFlipNews", "_blank")}
             style={{
               width: "24px", height: "24px", position: "relative",
               background: "none", border: "none", padding: 0, cursor: "pointer",
@@ -196,11 +263,11 @@ export default function MenuUnlogged({ onClose, onLogin }: MenuUnloggedProps) {
           </button>
         </div>
 
-        <button style={{ fontFamily: "'Wix Madefor Display', sans-serif", fontSize: "clamp(16px, 4.97vw, 20px)", fontWeight: 700, color: "#00e3b9", background: "none", border: "none", padding: 0, cursor: "pointer", whiteSpace: "nowrap" }}>
+        <button onClick={() => window.open(HOW_TO_PLAY_URL, "_blank")} style={{ fontFamily: "'Wix Madefor Display', sans-serif", fontSize: "clamp(16px, 4.97vw, 20px)", fontWeight: 700, color: "#00e3b9", background: "none", border: "none", padding: 0, cursor: "pointer", whiteSpace: "nowrap" }}>
           How to play
         </button>
 
-        <button style={{ fontFamily: "'Wix Madefor Display', sans-serif", fontSize: "clamp(16px, 4.97vw, 20px)", fontWeight: 700, color: "#00e3b9", background: "none", border: "none", padding: 0, cursor: "pointer", whiteSpace: "nowrap" }}>
+        <button onClick={() => window.open("https://t.me/unnamedDev0x", "_blank")} style={{ fontFamily: "'Wix Madefor Display', sans-serif", fontSize: "clamp(16px, 4.97vw, 20px)", fontWeight: 700, color: "#00e3b9", background: "none", border: "none", padding: 0, cursor: "pointer", whiteSpace: "nowrap" }}>
           Support
         </button>
       </div>

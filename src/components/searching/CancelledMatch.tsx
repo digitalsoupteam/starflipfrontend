@@ -45,7 +45,6 @@ export default function CancelledMatch({ onStartAnother }: CancelledMatchProps) 
           <Image src="/assets/game/coins.png" alt="" fill className="object-contain" sizes="133px" />
         </div>
 
-        {/* sad-astra.png — прижата к низу */}
         <div
           className="absolute pointer-events-none"
           style={{ left: 0, right: 0, bottom: 0, height: "clamp(120px, 28svh, 200px)", zIndex: 1 }}

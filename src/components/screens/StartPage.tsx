@@ -1,18 +1,23 @@
 "use client";
 
 import Image from "next/image";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import PopupOverlay from "../common/PopupOverlay";
 import PopupWelcomeBonus from "@/components/popups/PopupWelcomeBonus";
 import PopupDailyBonus from "@/components/popups/PopupDailyBonus";
 import PopupAirdrop from "@/components/popups/PopupAirdrop";
+import PopupInviteRef from "@/components/popups/PopupInviteRef";
 import MenuLogged from "@/components/menus/MenuLogged";
 import MenuUnlogged from "../menus/MenuUnlogged";
 import SearchingMatch from "@/components/searching/SearchingMatch";
 import CancelledMatch from "@/components/searching/CancelledMatch";
 import Game from "@/components/screens/Game";
 import { useUser } from "@/context/UserContext";
-import { api, Match, MatchResponse, JoinResponse, ResumeResponse, BoardCell } from "@/lib/api";
+import { useSound } from "@/context/SoundContext";
+import { api, ApiError, weiToNum, weiToEth, Match, MatchResponse, JoinResponse, ResumeResponse, BoardCell, AuthResponse, ClaimPointsResponse, FaucetResponse } from "@/lib/api";
+
+const HOW_TO_PLAY_URL =
+  "https://www.notion.so/StarFlip-How-to-Play-36e95daac839807aab01ccbc1bc3d8a5?pvs=28";
 
 type CellStatus = "closed" | 1 | 2 | 3 | 4;
 interface Cell { id: number; status: CellStatus; value: number }
@@ -25,7 +30,7 @@ function boardToCells(board: BoardCell[], myPlayerId: string): Cell[] {
       : bc.openedBy === myPlayerId
         ? (bc.id % 2 === 0 ? 1 : 2)
         : (bc.id % 2 === 0 ? 3 : 4)) as CellStatus,
-    value: bc.value ?? 0,
+    value: weiToNum(bc.value),
   }));
 }
 
@@ -33,17 +38,22 @@ type OverlayType =
   | "welcome"
   | "daily"
   | "airdrop"
+  | "inviteref"
   | "menu"
   | "searching"
   | "cancelled"
   | "game"
   | null;
 
-// typs for rendering PopupOverlay
+// Auto-popups are suppressed while these screens are active
+const POPUP_BLOCKED_DURING: OverlayType[] = ["game", "searching", "cancelled"];
+const isPopupBlocked = (state: OverlayType) => POPUP_BLOCKED_DURING.includes(state);
+
 const POPUP_TYPES = [
   "welcome",
   "daily",
   "airdrop",
+  "inviteref",
   "menu",
   "searching",
   "cancelled",
@@ -57,13 +67,152 @@ function isPopupType(v: OverlayType): v is PopupType {
 export default function StartPage() {
   const [active, setActive] = useState<OverlayType>(null);
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
-  const { user, logout } = useUser();
+  const [showStartTooltip, setShowStartTooltip] = useState(false);
+  const { user, setUser, logout } = useUser();
+  const { isMuted, toggleMute } = useSound();
+
+  // When welcome was opened from MenuUnlogged, closing it should go back to menu
+  const welcomeFromMenuRef = useRef(false);
+
+  const [isTMA] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return !!(window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id;
+    } catch {
+      return false;
+    }
+  });
+
+  // Restores the previous screen when an auto-popup is dismissed
+  const popupPrevRef = useRef<OverlayType>(null);
 
   const close = () => setActive(null);
 
-  // Resume active session on mount
+  const closeWelcome = () => {
+    const goToMenu = welcomeFromMenuRef.current;
+    welcomeFromMenuRef.current = false;
+    setActive(goToMenu ? "menu" : null);
+  };
+
+  const closeAutoPopup = () => {
+    const prev = popupPrevRef.current;
+    popupPrevRef.current = null;
+    setActive(prev);
+  };
+
+  // Daily bonus fires 30s after login — suppressed during active screens
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    if (!user.isLoggedIn) return;
+    const timer = setTimeout(() => {
+      setActive((prev) => {
+        if (isPopupBlocked(prev)) return prev;
+        popupPrevRef.current = prev; // remember where the user was
+        return "daily";
+      });
+    }, 30000);
+    return () => clearTimeout(timer);
+  }, [user.isLoggedIn]);
+
+  // Airdrop popup fires 60s after mount if no other popup is open
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setActive((prev) => {
+        if (isPopupBlocked(prev) || prev !== null) return prev;
+        popupPrevRef.current = null;
+        return "airdrop";
+      });
+    }, 60000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActive((prev) => {
+        if (isPopupBlocked(prev) || prev !== null) return prev;
+        popupPrevRef.current = null;
+        return "inviteref";
+      });
+    }, 180000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // TMA auto-login — fires once on mount if Telegram WebApp user is available
+  useEffect(() => {
+    if (user.isLoggedIn) return;
+
+    let telegramId: string | undefined;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      telegramId = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString();
+    } catch {}
+    if (!telegramId) return;
+
+    const getReferralCode = (): string | undefined => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sp = (window as any).Telegram?.WebApp?.initDataUnsafe?.start_param as string | undefined;
+        if (sp?.startsWith("ref_")) return sp;
+      } catch {}
+      try {
+        const ref = new URLSearchParams(window.location.search).get("ref");
+        if (ref) return ref.startsWith("ref_") ? ref : `ref_${ref}`;
+      } catch {}
+      return undefined;
+    };
+
+    (async () => {
+      try {
+        const data = await api.post<AuthResponse>("/auth/telegram", {
+          telegramId,
+          referralCode: getReferralCode(),
+        });
+        const p = data.player;
+        const ethBalance = `${weiToEth(p.balance ?? "0")} ETH`;
+        const baseUser = {
+          accId: p.playerId,
+          ethBalance,
+          pts: `${p.points} PTS`,
+          isLoggedIn: true,
+          inviteCode: p.inviteCode ?? "",
+          inviteLink: p.inviteLink ?? "",
+        };
+        setUser(baseUser);
+
+        try {
+          const claim = await api.post<ClaimPointsResponse>("/game/claim-points");
+          setUser({ ...baseUser, pts: `${claim.points} PTS` });
+
+          try {
+            const faucet = await api.post<FaucetResponse>("/game/faucet");
+            const finalUser = {
+              ...baseUser,
+              ethBalance: `${weiToEth(faucet.balance)} ETH`,
+              pts: `${claim.points} PTS`,
+            };
+            setUser(finalUser);
+            if (faucet.isFirstLogin && !localStorage.getItem("sf:welcome-seen")) {
+              localStorage.setItem("sf:welcome-seen", "1");
+              setTimeout(() => {
+                setActive((prev) => (isPopupBlocked(prev) ? prev : "welcome"));
+              }, 5000);
+            }
+          } catch {
+            // non-critical — mainnet blocks faucet with 403
+          }
+        } catch (err) {
+          if (!(err instanceof ApiError && err.status === 429)) {
+            console.error("Auto-login post-auth error:", err);
+          }
+        }
+      } catch (err) {
+        console.error("TMA auto-login error:", err);
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const token = sessionStorage.getItem("token");
     if (!token) return;
     const resume = async () => {
       try {
@@ -73,13 +222,12 @@ export default function StartPage() {
           setActive("game");
         }
       } catch {
-        // no active session — stay on start page
+        // no active session
       }
     };
     resume();
   }, []);
 
-  // Poll for match while searching
   useEffect(() => {
     if (active !== "searching") return;
     const interval = setInterval(async () => {
@@ -92,6 +240,8 @@ export default function StartPage() {
           setActive("cancelled");
         }
       } catch (err) {
+        // 404 on first tick is a normal Redis race during searching — keep polling
+        if (err instanceof ApiError && err.status === 404) return;
         console.error("Match poll error:", err);
       }
     }, 2000);
@@ -100,8 +250,8 @@ export default function StartPage() {
 
   const handleStartGame = async () => {
     try {
-      const token = localStorage.getItem("token") ?? "";
-      const data = await api.post<JoinResponse>("/game/join", { bid: "0.001", token });
+      const token = sessionStorage.getItem("token") ?? "";
+      const data = await api.post<JoinResponse>("/game/join", { bid: "10000000000000000", token });
       setCurrentMatch(data.match);
       if (data.match.status === "active") {
         setActive("game");
@@ -123,6 +273,7 @@ export default function StartPage() {
     return (
       <Game
         currentTurn={currentMatch?.currentTurn ?? "You"}
+        initialTurnStartedAt={currentMatch?.turnStartedAt}
         playerName="You"
         opponentName={currentMatch ? getOpponentId(currentMatch) : "PlayerName"}
         initialCells={currentMatch ? boardToCells(currentMatch.board, user.accId) : undefined}
@@ -132,6 +283,7 @@ export default function StartPage() {
           setActive(null);
           handleStartGame();
         }}
+        onExit={() => setActive(null)}
       />
     );
   }
@@ -231,7 +383,7 @@ export default function StartPage() {
                 </span>
               </div>
               <button
-                onClick={() => setActive("welcome")}
+                onClick={() => setActive(user.isLoggedIn ? "menu" : "welcome")}
                 style={{
                   fontFamily: "'Wix Madefor Display', sans-serif",
                   fontSize: "clamp(13px, 4.47vw, 18px)",
@@ -245,7 +397,7 @@ export default function StartPage() {
                   whiteSpace: "nowrap",
                 }}
               >
-                Deposit
+                {user.isLoggedIn ? "Deposit" : "Connect"}
               </button>
             </div>
             <div
@@ -285,7 +437,39 @@ export default function StartPage() {
           </div>
 
           <button
-            onClick={() => setActive(active === "menu" ? null : "menu")}
+            onClick={toggleMute}
+            className="relative shrink-0 cursor-pointer"
+            style={{
+              width: "clamp(28px, 8.96vw, 36px)",
+              height: "clamp(28px, 8.96vw, 36px)",
+              background: "none",
+              border: "none",
+              padding: 0,
+            }}
+            aria-label={isMuted ? "Unmute" : "Mute"}
+          >
+            <Image
+              src={
+                isMuted
+                  ? "/assets/icons/sound-min-svgrepo-com.svg"
+                  : "/assets/icons/sound-max-svgrepo-com.svg"
+              }
+              alt={isMuted ? "Sound off" : "Sound on"}
+              fill
+              sizes="36px"
+              className="object-contain"
+            />
+          </button>
+
+          <button
+            onClick={() => {
+              if (user.isLoggedIn) {
+                setActive(active === "menu" ? null : "menu");
+              } else {
+                welcomeFromMenuRef.current = true;
+                setActive("welcome");
+              }
+            }}
             className="relative shrink-0 cursor-pointer"
             style={{
               width: "clamp(28px, 8.96vw, 36px)",
@@ -373,8 +557,50 @@ export default function StartPage() {
             className="flex items-center"
             style={{ gap: "clamp(8px, 3.73vw, 15px)" }}
           >
+            <div className="relative shrink-0">
+              {showStartTooltip && (
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: "calc(100% + 10px)",
+                    left: "85%",
+                    transform: "translateX(-50%)",
+                    backgroundColor: "#0f0b16",
+                    border: "1px solid #00e3b9",
+                    borderRadius: "clamp(6px, 2vw, 8px)",
+                    padding: "6px 12px",
+                    whiteSpace: "nowrap",
+                    fontFamily: "'Wix Madefor Display', sans-serif",
+                    fontSize: "clamp(11px, 3.2vw, 13px)",
+                    fontWeight: 500,
+                    color: "#00e3b9",
+                    zIndex: 10,
+                    pointerEvents: "none",
+                  }}
+                >
+                  Connect your account to start
+                  <span style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: "50%",
+                    transform: "translateX(-100%)",
+                    width: 0,
+                    height: 0,
+                    borderLeft: "6px solid transparent",
+                    borderRight: "6px solid transparent",
+                    borderTop: "6px solid #00e3b9",
+                  }} />
+                </div>
+              )}
             <button
-              onClick={handleStartGame}
+              onClick={() => {
+                if (!user.isLoggedIn) {
+                  setShowStartTooltip(true);
+                  setTimeout(() => setShowStartTooltip(false), 2500);
+                  return;
+                }
+                handleStartGame();
+              }}
               className="flex items-center justify-center shrink-0 cursor-pointer"
               style={{
                 background: "rgba(0, 227, 185, 0.3)",
@@ -414,10 +640,11 @@ export default function StartPage() {
                 />
               </div>
             </button>
+            </div>
 
             <button
               className="flex items-center justify-center shrink-0 cursor-pointer"
-              onClick={() => setActive("daily")}
+              onClick={() => window.open(HOW_TO_PLAY_URL, "_blank")}
               style={{
                 background: "rgba(15, 11, 22, 0.3)",
                 border: "1.168px solid #00e3b9",
@@ -456,7 +683,7 @@ export default function StartPage() {
               <br />
               you agree to the{" "}
               <button
-                onClick={() => setActive("airdrop")}
+                onClick={() => window.open("https://www.notion.so/Terms-of-service-36d95daac83980369b15e8462fce6110", "_blank")}
                 style={{
                   fontFamily: "'Wix Madefor Display', sans-serif",
                   fontSize: "clamp(11px, 3.98vw, 16px)",
@@ -519,10 +746,11 @@ export default function StartPage() {
       </div>
 
       {isPopupType(active) && (
-        <PopupOverlay onClose={close}>
-          {active === "welcome" && <PopupWelcomeBonus onClose={close} />}
-          {active === "daily" && <PopupDailyBonus onClose={close} />}
-          {active === "airdrop" && <PopupAirdrop onClose={close} />}
+        <PopupOverlay onClose={active === "welcome" ? closeWelcome : close}>
+          {active === "welcome" && <PopupWelcomeBonus onClose={closeWelcome} onLoginInstead={() => setActive("menu")} isTMA={isTMA} />}
+          {active === "daily" && <PopupDailyBonus onClose={closeAutoPopup} />}
+          {active === "airdrop" && <PopupAirdrop onClose={closeAutoPopup} />}
+          {active === "inviteref" && <PopupInviteRef onClose={closeAutoPopup} />}
           {active === "searching" && (
             <SearchingMatch
               onStop={close}
@@ -549,6 +777,10 @@ export default function StartPage() {
               <MenuUnlogged
                 onClose={close}
                 onLogin={close}
+                onFirstLogin={() => {
+                  welcomeFromMenuRef.current = false;
+                  setActive((prev) => (isPopupBlocked(prev) ? prev : "welcome"));
+                }}
               />
             ))}
         </PopupOverlay>

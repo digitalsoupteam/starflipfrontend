@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { api, CancelResponse } from "@/lib/api";
 
 interface SearchingMatchProps {
   onStop: () => void;
@@ -52,17 +53,30 @@ function Loader() {
 
 export default function SearchingMatch({ onStop, onOpenChat, onCancel }: SearchingMatchProps) {
 
-  // TODO: заменить на сигнал от бэкенда
+  const handleStop = async () => {
+    try {
+      await api.post<CancelResponse>("/game/cancel");
+    } catch {
+      // best-effort — proceed regardless
+    }
+    onStop();
+  };
+
+  // Auto-cancel if no match found within 30s
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
+      try {
+        await api.post<CancelResponse>("/game/cancel");
+      } catch {
+        // ignore
+      }
       onCancel?.();
     }, 30000);
     return () => clearTimeout(timer);
   }, [onCancel]);
 
   return (
-    <div className="flex items-center justify-center w-full h-full" onClick={onStop}>
-      {/* Карточка */}
+    <div className="flex items-center justify-center w-full h-full" onClick={handleStop}>
       <div
         className="relative overflow-hidden"
         style={{
@@ -127,7 +141,7 @@ export default function SearchingMatch({ onStop, onOpenChat, onCancel }: Searchi
 
           <div className="flex items-center" style={{ gap: "clamp(10px, 3.73vw, 15px)" }}>
             <button
-              onClick={onStop}
+              onClick={handleStop}
               className="flex items-center justify-center cursor-pointer shrink-0"
               style={{ background: "rgba(15, 11, 22, 0.3)", border: "1.168px solid #00e3b9", borderRadius: "clamp(7px, 2.49vw, 10px)", height: "clamp(44px, 6.41svh, 56px)", paddingLeft: "clamp(10px, 2.91vw, 11.679px)", paddingRight: "clamp(12px, 4.07vw, 16.35px)", gap: "clamp(6px, 2.04vw, 8.175px)" }}
             >
@@ -142,7 +156,7 @@ export default function SearchingMatch({ onStop, onOpenChat, onCancel }: Searchi
             </button>
 
             <button
-              onClick={onOpenChat}
+              onClick={() => window.open("https://t.me/+sSD3YAOnzsE4MmEy", "_blank")}
               className="flex items-center justify-center cursor-pointer shrink-0"
               style={{ background: "rgba(0, 227, 185, 0.3)", border: "1.168px solid #00e3b9", borderRadius: "clamp(9px, 2.91vw, 11.679px)", height: "clamp(44px, 6.41svh, 56px)", paddingLeft: "clamp(12px, 4.07vw, 16.35px)", paddingRight: "clamp(12px, 4.07vw, 16.35px)" }}
             >

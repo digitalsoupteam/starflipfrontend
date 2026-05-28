@@ -1,12 +1,14 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
 interface User {
   accId: string;
   ethBalance: string;
   pts: string;
   isLoggedIn: boolean;
+  inviteCode: string;
+  inviteLink: string;
 }
 
 interface UserContextType {
@@ -20,6 +22,8 @@ const defaultUser: User = {
   ethBalance: "0 ETH",
   pts: "0 PTS",
   isLoggedIn: false,
+  inviteCode: "",
+  inviteLink: "",
 };
 
 const UserContext = createContext<UserContextType>({
@@ -32,9 +36,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User>(defaultUser);
 
   const logout = () => {
-    localStorage.removeItem("token");
+    sessionStorage.removeItem("token");
     setUser(defaultUser);
   };
+
+  // api.ts dispatches sf:auth-expired on 401 — reset state here
+  useEffect(() => {
+    const handler = () => logout();
+    window.addEventListener("sf:auth-expired", handler);
+    return () => window.removeEventListener("sf:auth-expired", handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <UserContext.Provider value={{ user, setUser, logout }}>

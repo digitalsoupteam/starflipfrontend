@@ -63,15 +63,6 @@ export default function PopupAirdrop({ onClose }: PopupAirdropProps) {
             <p style={{ fontFamily: "'Wix Madefor Display', sans-serif", fontSize: "clamp(12px, 3.73vw, 16px)", fontWeight: 600, color: "#ffffff", lineHeight: 1.3 }}>Receive rewards when the projects token launches!</p>
           </div>
         </div>
-
-        <button
-          className="flex items-center justify-center w-full cursor-pointer relative"
-          style={{ backgroundColor: "#00e3b9", border: "none", borderRadius: "clamp(9px, 2.91vw, 11.679px)", height: "clamp(48px, 6.41svh, 56px)", boxShadow: "0px 4px 4px 0px rgba(0,0,0,0.25)", zIndex: 1 }}
-        >
-          <span className="uppercase whitespace-nowrap" style={{ fontFamily: "'Tektur', sans-serif", fontSize: "clamp(14px, 4.48vw, 18px)", fontVariationSettings: "'wdth' 100", fontWeight: 500, color: "#0d0d0d", lineHeight: 1 }}>
-            Play Now
-          </span>
-        </button>
       </div>
     </div>
   );

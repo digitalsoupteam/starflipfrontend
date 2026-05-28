@@ -3,9 +3,13 @@
 import Image from "next/image";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useUser } from "@/context/UserContext";
+import { useSound } from "@/context/SoundContext";
 import PopupOverlay from "@/components/common/PopupOverlay";
 import PopupMatchOver from "@/components/popups/PopupMatchOver";
-import { api, BoardCell, Match, MatchResponse, MoveResponse } from "@/lib/api";
+import { api, weiToNum, weiToEth, BoardCell, Match, MatchResponse, MoveResponse, MeResponse } from "@/lib/api";
+
+const HOW_TO_PLAY_URL =
+  "https://www.notion.so/StarFlip-How-to-Play-36e95daac839807aab01ccbc1bc3d8a5?pvs=28";
 
 type CellStatus = "closed" | 1 | 2 | 3 | 4;
 
@@ -17,10 +21,12 @@ interface Cell {
 
 interface GameProps {
   currentTurn: string;
+  initialTurnStartedAt?: number; // Unix ms from backend
   playerName: string;
   opponentName: string;
   initialCells?: Cell[];
   onPlayAgain?: () => void;
+  onExit?: () => void;      // close match-over → return to StartPage
   matchId?: string;
   myPlayerId?: string;
 }
@@ -38,34 +44,39 @@ const ASTRA_COMMENTS = [
   "text20.png",
 ];
 
-// boxes sets
+// Layout constants — all in cqw (container query width) or svh
 const SCALE_FACTOR = 0.95;
 const CELL_PCT = 20.15 * SCALE_FACTOR;
 const GAP_X_PCT = 3.48 * SCALE_FACTOR;
 const GAP_Y_PCT = 0.8 * SCALE_FACTOR;
 const BOXES_TOP_PCT = 17.04;
 
-// astra sets
 const ASTRA_H = "clamp(120px, 45svh, 700px)";
 const ASTRA_W = "clamp(80px, 35.7svh, 452px)";
 const ASTRA_R = "clamp(-150px, -25.68vw, -50px)";
 
-// chest sets
 const CHEST_W = "clamp(150px, 66vw, 305px)";
 const CHEST_H = "clamp(162px, 60.9vw, 328px)";
 const CHEST_L = "clamp(-40px, -15.98vw, -120px)";
 
-function GameTimer() {
-  const [timeLeft, setTimeLeft] = useState(30);
+const AFK_TIMEOUT_MS = 5 * 60 * 1000; // must match backend afk.service.ts
+
+function getTimeLeft(turnStartedAt: number): number {
+  return Math.max(0, Math.round((AFK_TIMEOUT_MS - (Date.now() - turnStartedAt)) / 1000));
+}
+
+function GameTimer({ turnStartedAt }: { turnStartedAt: number }) {
+  const [timeLeft, setTimeLeft] = useState(() => getTimeLeft(turnStartedAt));
+
   useEffect(() => {
-    const interval = setInterval(
-      () => setTimeLeft((p) => (p <= 1 ? 0 : p - 1)),
-      1000,
-    );
+    const interval = setInterval(() => setTimeLeft(getTimeLeft(turnStartedAt)), 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [turnStartedAt]);
+
   const m = String(Math.floor(timeLeft / 60)).padStart(2, "0");
   const s = String(timeLeft % 60).padStart(2, "0");
+  const isUrgent = timeLeft <= 60;
+
   return (
     <span
       style={{
@@ -73,9 +84,11 @@ function GameTimer() {
         fontSize: "clamp(14px, 4vw, 20px)",
         fontVariationSettings: "'wdth' 100",
         fontWeight: 500,
-        color: "#00e3b9",
+        color: isUrgent ? "#ff5100" : "#00e3b9",
         lineHeight: 1,
-        textShadow: "0px 0px 13px rgba(0, 255, 179, 0.57)",
+        textShadow: isUrgent
+          ? "0px 0px 13px rgba(255, 81, 0, 0.6)"
+          : "0px 0px 13px rgba(0, 255, 179, 0.57)",
       }}
     >
       {m}:{s}
@@ -85,18 +98,26 @@ function GameTimer() {
 
 export default function Game({
   currentTurn,
+  initialTurnStartedAt,
   playerName,
   opponentName,
   initialCells,
   onPlayAgain,
+  onExit,
   matchId,
   myPlayerId,
 }: GameProps) {
-  const { user } = useUser();
+  const { user, setUser } = useUser();
+  // Stable ref prevents fetchResult closure from capturing a stale user
+  const userRef = useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
+  const { isMuted, toggleMute, playCellSound, playWinSound } = useSound();
   const effectiveMyPlayerId = myPlayerId || user.accId;
 
-  // currentTurnState tracks live turn (updated from API polls)
   const [currentTurnState, setCurrentTurnState] = useState(currentTurn);
+  const [turnStartedAt, setTurnStartedAt] = useState<number>(
+    () => initialTurnStartedAt ?? Date.now(),
+  );
   const isMyTurn = matchId
     ? currentTurnState === effectiveMyPlayerId
     : currentTurnState === playerName;
@@ -154,17 +175,26 @@ export default function Game({
     commentFile: string;
   }>({ visible: false, amount: 0, commentFile: "" });
 
-  // Stable map: cell id → visual variant (assigned once per opened cell)
+  // Visual variant assigned once per cell so it doesn't change on re-render
   const cellVariantsRef = useRef<Map<number, 1 | 2 | 3 | 4>>(new Map());
 
   const fmtEth = (n: number) => `${n.toFixed(8)} ETH`;
 
-  // Update local cell state from backend board
+  // Adapts decimal precision so small values always show 3+ significant digits
+  const fmtCell = (n: number): string => {
+    if (n <= 0) return "0";
+    if (n >= 0.01)  return n.toFixed(4);
+    if (n >= 0.001) return n.toFixed(5);
+    if (n >= 0.0001) return n.toFixed(6);
+    if (n >= 0.00001) return n.toFixed(7);
+    return n.toFixed(8);
+  };
+
   const updateFromBoard = useCallback(
     (board: BoardCell[], myPid: string) => {
       const newCells = board.map((bc) => {
         if (bc.openedBy === null) {
-          return { id: bc.id, status: "closed" as CellStatus, value: bc.value ?? 0 };
+          return { id: bc.id, status: "closed" as CellStatus, value: weiToNum(bc.value) };
         }
         if (!cellVariantsRef.current.has(bc.id)) {
           const isMe = bc.openedBy === myPid;
@@ -176,23 +206,22 @@ export default function Game({
         return {
           id: bc.id,
           status: cellVariantsRef.current.get(bc.id)!,
-          value: bc.value ?? 0,
+          value: weiToNum(bc.value),
         };
       });
       setCells(newCells);
       const myTot = board
         .filter((bc) => bc.openedBy === myPid)
-        .reduce((sum, bc) => sum + (bc.value ?? 0), 0);
+        .reduce((sum, bc) => sum + weiToNum(bc.value), 0);
       const oppTot = board
         .filter((bc) => bc.openedBy !== null && bc.openedBy !== myPid)
-        .reduce((sum, bc) => sum + (bc.value ?? 0), 0);
+        .reduce((sum, bc) => sum + weiToNum(bc.value), 0);
       setMyTotal(myTot);
       setOpponentTotal(oppTot);
     },
     [],
   );
 
-  // Fetch final result and show match-over popup
   const fetchResult = useCallback(
     async (mId: string, myPid: string) => {
       try {
@@ -203,30 +232,54 @@ export default function Game({
         updateFromBoard(board, myPid);
         const myTot = board
           .filter((bc) => bc.openedBy === myPid)
-          .reduce((sum, bc) => sum + (bc.value ?? 0), 0);
+          .reduce((sum, bc) => sum + weiToNum(bc.value), 0);
         const oppTot = board
           .filter((bc) => bc.openedBy !== null && bc.openedBy !== myPid)
-          .reduce((sum, bc) => sum + (bc.value ?? 0), 0);
-        const bid = data.match.balances[myPid] ?? 0;
+          .reduce((sum, bc) => sum + weiToNum(bc.value), 0);
+        const isWinner = myTot >= oppTot;
+        const bid = (myTot + oppTot) / 2; // each player's stake = half the pot
         const profitAbs = myTot - bid;
         const profitPct = bid > 0 ? Math.round((profitAbs / bid) * 100) : 0;
         const profitStr = profitPct >= 0 ? `+ ${profitPct} %` : `${profitPct} %`;
-        setMatchResultData({
-          result: fmtEth(myTot),
-          profit: profitStr,
-          points: "+ 10 PTS",
-          title: myTot >= oppTot ? "You Won!" : "Nice try!",
-        });
+
+        try {
+          const prevPts = parseInt(userRef.current.pts) || 0;
+          const me = await api.get<MeResponse>("/game/me");
+          const newPts = me.player.points;
+          const ptsDiff = newPts - prevPts;
+          const ptsStr = ptsDiff >= 0 ? `+ ${ptsDiff} PTS` : `${ptsDiff} PTS`;
+          setUser({
+            ...userRef.current,
+            ethBalance: `${weiToEth(me.player.balance)} ETH`,
+            pts: `${newPts} PTS`,
+          });
+          setMatchResultData({
+            result: fmtEth(myTot),
+            profit: profitStr,
+            points: ptsStr,
+            title: isWinner ? "You Won!" : "Nice try!",
+          });
+        } catch {
+          // /game/me failed — fall back to static point estimates
+          setMatchResultData({
+            result: fmtEth(myTot),
+            profit: profitStr,
+            points: isWinner ? "+ 30 PTS" : "+ 10 PTS",
+            title: isWinner ? "You Won!" : "Nice try!",
+          });
+        }
       } catch (err) {
         console.error("Result fetch error:", err);
       } finally {
-        setTimeout(() => setShowMatchOver(true), 1000);
+        setTimeout(() => {
+          playWinSound();
+          setShowMatchOver(true);
+        }, 1000);
       }
     },
-    [updateFromBoard],
+    [updateFromBoard, playWinSound, setUser],
   );
 
-  // Poll /game/match every 2 s when matchId is present
   useEffect(() => {
     if (!matchId) return;
     const pid = effectiveMyPlayerId;
@@ -235,6 +288,7 @@ export default function Game({
         const data = await api.get<MatchResponse>("/game/match");
         updateFromBoard(data.match.board, pid);
         setCurrentTurnState(data.match.currentTurn ?? "");
+        setTurnStartedAt(data.match.turnStartedAt ?? Date.now());
         if (data.match.status === "finished") {
           clearInterval(interval);
           fetchResult(matchId, pid);
@@ -253,7 +307,7 @@ export default function Game({
       if (!cell || cell.status !== "closed") return;
 
       if (!matchId) {
-        // Mock fallback (no backend)
+        // Demo mode — no backend
         const randomStatus = (Math.floor(Math.random() * 4) + 1) as 1 | 2 | 3 | 4;
         const randomComment =
           ASTRA_COMMENTS[Math.floor(Math.random() * ASTRA_COMMENTS.length)];
@@ -262,6 +316,7 @@ export default function Game({
         );
         setCells(newCells);
         setMyTotal((prev) => prev + cell.value);
+        playCellSound();
         setYouGot({
           visible: true,
           amount: cell.value,
@@ -277,7 +332,6 @@ export default function Game({
         return;
       }
 
-      // Real API move
       try {
         const clientMoveId = `${Date.now()}-${id}`;
         const data = await api.post<MoveResponse>("/game/move", {
@@ -287,14 +341,16 @@ export default function Game({
         });
         updateFromBoard(data.match.board, effectiveMyPlayerId);
         setCurrentTurnState(data.match.currentTurn ?? "");
+        setTurnStartedAt(data.match.turnStartedAt ?? Date.now());
 
         const openedCell = data.match.board.find((bc) => bc.id === id);
         if (openedCell && openedCell.value !== undefined) {
+          playCellSound();
           const randomComment =
             ASTRA_COMMENTS[Math.floor(Math.random() * ASTRA_COMMENTS.length)];
           setYouGot({
             visible: true,
-            amount: openedCell.value,
+            amount: weiToNum(openedCell.value),
             commentFile: randomComment,
           });
           setTimeout(
@@ -310,7 +366,7 @@ export default function Game({
         console.error("Move error:", err);
       }
     },
-    [cells, isMyTurn, matchId, effectiveMyPlayerId, updateFromBoard, fetchResult],
+    [cells, isMyTurn, matchId, effectiveMyPlayerId, updateFromBoard, fetchResult, playCellSound],
   );
 
   const cellSize = `${CELL_PCT}cqw`;
@@ -344,7 +400,7 @@ export default function Game({
           alt=""
           fill
           priority
-          className="object-cover object-left-top"
+          className="object-cover object-top-left"
           sizes="100vw"
         />
       </div>
@@ -375,7 +431,7 @@ export default function Game({
           className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap"
           style={{ top: "1.6%", zIndex: 3 }}
         >
-          <GameTimer key={currentTurnState} />
+          <GameTimer key={currentTurnState} turnStartedAt={turnStartedAt} />
         </div>
 
         <div
@@ -480,7 +536,7 @@ export default function Game({
                   lineHeight: 1,
                 }}
               >
-                + {youGot.amount.toFixed(5)} ETH
+                + {fmtCell(youGot.amount)} ETH
               </span>
             </div>
           </div>
@@ -551,23 +607,48 @@ export default function Game({
         >
           Found a bug? Write a report
         </a>
-        <button
-          onClick={() => {}}
-          style={{
-            fontFamily: "'Wix Madefor Display', sans-serif",
-            fontSize: "clamp(12px, 3.73vw, 15px)",
-            fontWeight: 700,
-            color: "#00e3b9",
-            background: "none",
-            border: "none",
-            padding: 0,
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-            textShadow: "0px 0px 8px rgba(0, 227, 185, 0.4)",
-          }}
-        >
-          How to play
-        </button>
+        <div className="flex items-center" style={{ gap: "clamp(10px, 3.73vw, 15px)" }}>
+          <button
+            onClick={toggleMute}
+            aria-label={isMuted ? "Unmute" : "Mute"}
+            style={{
+              position: "relative",
+              width: "clamp(22px, 6.72vw, 27px)",
+              height: "clamp(22px, 6.72vw, 27px)",
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            <Image
+              src={isMuted ? "/assets/icons/sound-min-svgrepo-com.svg" : "/assets/icons/sound-max-svgrepo-com.svg"}
+              alt={isMuted ? "Sound off" : "Sound on"}
+              fill
+              sizes="27px"
+              className="object-contain"
+            />
+          </button>
+
+          <button
+            onClick={() => window.open(HOW_TO_PLAY_URL, "_blank")}
+            style={{
+              fontFamily: "'Wix Madefor Display', sans-serif",
+              fontSize: "clamp(12px, 3.73vw, 15px)",
+              fontWeight: 700,
+              color: "#00e3b9",
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              textShadow: "0px 0px 8px rgba(0, 227, 185, 0.4)",
+            }}
+          >
+            How to play
+          </button>
+        </div>
       </div>
 
       <div
@@ -715,7 +796,7 @@ export default function Game({
                   whiteSpace: "pre-line",
                 }}
               >
-                {opponentName}
+                {opponentName.slice(-5)}
               </span>
               <span
                 style={{
@@ -737,9 +818,9 @@ export default function Game({
 
       {showMatchOver && (
         <div className="absolute inset-0" style={{ zIndex: 20 }}>
-          <PopupOverlay onClose={() => setShowMatchOver(false)}>
+          <PopupOverlay onClose={() => { setShowMatchOver(false); onExit?.(); }}>
             <PopupMatchOver
-              onClose={() => setShowMatchOver(false)}
+              onClose={() => { setShowMatchOver(false); onExit?.(); }}
               onPlayAgain={() => {
                 setShowMatchOver(false);
                 onPlayAgain?.();

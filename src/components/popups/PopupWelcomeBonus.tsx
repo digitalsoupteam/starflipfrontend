@@ -1,10 +1,40 @@
+"use client";
+
 import Image from "next/image";
+import { useState } from "react";
+import { useUser } from "@/context/UserContext";
+import { api, ApiError, weiToEth, FaucetResponse } from "@/lib/api";
 
 interface PopupWelcomeBonusProps {
   onClose: () => void;
+  onLoginInstead?: () => void;
+  /** True when shown after TMA auto-login — changes text and hides sign-in buttons */
+  isTMA?: boolean;
 }
 
-export default function PopupWelcomeBonus({ onClose }: PopupWelcomeBonusProps) {
+export default function PopupWelcomeBonus({ onClose, onLoginInstead, isTMA = false }: PopupWelcomeBonusProps) {
+  const { user, setUser } = useUser();
+  const [devMsg, setDevMsg] = useState<string | null>(null);
+
+  // TODO: remove before production
+  const handleDevFaucet = async () => {
+    setDevMsg(null);
+    try {
+      const data = await api.post<FaucetResponse>("/game/faucet");
+      const ethAmount = weiToEth(data.balance);
+      setUser({ ...user, ethBalance: `${ethAmount} ETH` });
+      setDevMsg(`✓ ${ethAmount} ETH`);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 429) {
+        setDevMsg("Come back tomorrow");
+      } else if (err instanceof ApiError && err.status === 403) {
+        setDevMsg("Faucet disabled on mainnet");
+      } else {
+        setDevMsg("Connection error, try again");
+      }
+    }
+  };
+
   return (
     <div
       className="flex items-center justify-center w-full h-full"
@@ -25,10 +55,7 @@ export default function PopupWelcomeBonus({ onClose }: PopupWelcomeBonusProps) {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div
-          className="flex items-start justify-between relative"
-          style={{ zIndex: 2 }}
-        >
+        <div className="flex items-start justify-between relative" style={{ zIndex: 2 }}>
           <div style={{ flex: 1, marginRight: "12px" }}>
             <div
               style={{
@@ -42,9 +69,14 @@ export default function PopupWelcomeBonus({ onClose }: PopupWelcomeBonusProps) {
                 marginBottom: "clamp(10px, 3.73vw, 15px)",
               }}
             >
-              <p>0.1 ETH and</p>
-              <p>150 ranking</p>
-              <p>points</p>
+              {isTMA ? (
+                <p>Your welcome<br />bonus!</p>
+              ) : (
+                <>
+                  <p>Connect and</p>
+                  <p>take your bonus</p>
+                </>
+              )}
             </div>
             <p
               style={{
@@ -56,7 +88,9 @@ export default function PopupWelcomeBonus({ onClose }: PopupWelcomeBonusProps) {
                 maxWidth: "207px",
               }}
             >
-              Sign up now and receive a welcome bonus:
+              {isTMA
+                ? "You've just received a welcome bonus! It has been credited to your account."
+                : "0.1 test ETH and 300 PTS for first login, and 30 PTS per everyday login"}
             </p>
           </div>
           <button
@@ -72,19 +106,11 @@ export default function PopupWelcomeBonus({ onClose }: PopupWelcomeBonusProps) {
               position: "relative",
             }}
           >
-            <Image
-              src="/assets/icons/x.svg"
-              alt="Close"
-              fill
-              className="object-contain"
-            />
+            <Image src="/assets/icons/x.svg" alt="Close" fill className="object-contain" />
           </button>
         </div>
 
-        <div
-          className="relative flex flex-col"
-          style={{ gap: "clamp(8px, 2.99vw, 12px)" }}
-        >
+        <div className="relative flex flex-col" style={{ gap: "clamp(8px, 2.99vw, 12px)" }}>
           <div
             className="absolute pointer-events-none"
             style={{
@@ -104,92 +130,110 @@ export default function PopupWelcomeBonus({ onClose }: PopupWelcomeBonusProps) {
             />
           </div>
 
-          <button
-            className="flex items-center justify-center w-full cursor-pointer"
-            style={{
-              backgroundColor: "#00e3b9",
-              border: "none",
-              borderRadius: "clamp(9px, 2.91vw, 11.679px)",
-              height: "clamp(48px, 6.41svh, 56px)",
-              gap: "clamp(8px, 2.99vw, 12px)",
-              boxShadow: "0px 4px 4px 0px rgba(0,0,0,0.25)",
-              position: "relative",
-              zIndex: 2,
-            }}
-          >
-            <div
+          {isTMA ? (
+            <button
+              onClick={onClose}
+              className="flex items-center justify-center w-full cursor-pointer"
               style={{
-                width: "24px",
-                height: "24px",
+                backgroundColor: "#00e3b9",
+                border: "none",
+                borderRadius: "clamp(9px, 2.91vw, 11.679px)",
+                height: "clamp(48px, 6.41svh, 56px)",
+                boxShadow: "0px 4px 4px 0px rgba(0,0,0,0.25)",
                 position: "relative",
-                flexShrink: 0,
+                zIndex: 2,
               }}
             >
-              <Image
-                src="/assets/icons/google.svg"
-                alt="Google"
-                fill
-                className="object-contain"
-              />
-            </div>
-            <span
-              className="uppercase whitespace-nowrap"
-              style={{
-                fontFamily: "'Tektur', sans-serif",
-                fontSize: "clamp(14px, 4.48vw, 18px)",
-                fontVariationSettings: "'wdth' 100",
-                fontWeight: 500,
-                color: "#0d0d0d",
-                lineHeight: 1,
-              }}
-            >
-              Sign up with Google
-            </span>
-          </button>
+              <span
+                className="uppercase whitespace-nowrap"
+                style={{
+                  fontFamily: "'Tektur', sans-serif",
+                  fontSize: "clamp(14px, 4.48vw, 18px)",
+                  fontVariationSettings: "'wdth' 100",
+                  fontWeight: 500,
+                  color: "#0d0d0d",
+                  lineHeight: 1,
+                }}
+              >
+                Okay!
+              </span>
+            </button>
+          ) : (
+            <>
+              <button
+                className="flex items-center justify-center w-full cursor-pointer"
+                style={{
+                  backgroundColor: "#00e3b9",
+                  border: "none",
+                  borderRadius: "clamp(9px, 2.91vw, 11.679px)",
+                  height: "clamp(48px, 6.41svh, 56px)",
+                  gap: "clamp(8px, 2.99vw, 12px)",
+                  boxShadow: "0px 4px 4px 0px rgba(0,0,0,0.25)",
+                  position: "relative",
+                  zIndex: 2,
+                }}
+              >
+                <div style={{ width: "24px", height: "24px", position: "relative", flexShrink: 0 }}>
+                  <Image src="/assets/icons/google.svg" alt="Google" fill className="object-contain" />
+                </div>
+                <span className="uppercase whitespace-nowrap" style={{ fontFamily: "'Tektur', sans-serif", fontSize: "clamp(14px, 4.48vw, 18px)", fontVariationSettings: "'wdth' 100", fontWeight: 500, color: "#0d0d0d", lineHeight: 1 }}>
+                  Sign up with Google
+                </span>
+              </button>
 
-          <button
-            className="flex items-center justify-center w-full cursor-pointer"
-            style={{
-              backgroundColor: "#00e3b9",
-              border: "none",
-              borderRadius: "clamp(9px, 2.91vw, 11.679px)",
-              height: "clamp(48px, 6.41svh, 56px)",
-              gap: "clamp(8px, 2.99vw, 12px)",
-              boxShadow: "0px 4px 4px 0px rgba(0,0,0,0.25)",
-              position: "relative",
-              zIndex: 2,
-            }}
-          >
-            <div
-              style={{
-                width: "24px",
-                height: "24px",
-                position: "relative",
-                flexShrink: 0,
-                filter: "brightness(0)",
-              }}
-            >
-              <Image
-                src="/assets/icons/telegram.svg"
-                alt="Telegram"
-                fill
-                className="object-contain"
-              />
+              <button
+                className="flex items-center justify-center w-full cursor-pointer"
+                style={{
+                  backgroundColor: "#00e3b9",
+                  border: "none",
+                  borderRadius: "clamp(9px, 2.91vw, 11.679px)",
+                  height: "clamp(48px, 6.41svh, 56px)",
+                  gap: "clamp(8px, 2.99vw, 12px)",
+                  boxShadow: "0px 4px 4px 0px rgba(0,0,0,0.25)",
+                  position: "relative",
+                  zIndex: 2,
+                }}
+              >
+                <div style={{ width: "24px", height: "24px", position: "relative", flexShrink: 0, filter: "brightness(0)" }}>
+                  <Image src="/assets/icons/telegram.svg" alt="Telegram" fill className="object-contain" />
+                </div>
+                <span className="uppercase whitespace-nowrap" style={{ fontFamily: "'Tektur', sans-serif", fontSize: "clamp(14px, 4.48vw, 18px)", fontVariationSettings: "'wdth' 100", fontWeight: 500, color: "#0d0d0d", lineHeight: 1 }}>
+                  Sign up with Telegram
+                </span>
+              </button>
+
+              <p style={{ fontFamily: "'Wix Madefor Display', sans-serif", fontSize: "clamp(12px, 3.73vw, 15px)", color: "#ffffff", textAlign: "center", lineHeight: 1.4, position: "relative", zIndex: 2 }}>
+                Already have an account?{" "}
+                <button
+                  onClick={(e) => { e.stopPropagation(); onClose(); onLoginInstead?.(); }}
+                  style={{ fontFamily: "inherit", fontSize: "inherit", color: "#ffffff", background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline", lineHeight: "inherit" }}
+                >
+                  Log in
+                </button>{" "}
+                and claim your daily bonus
+              </p>
+            </>
+          )}
+
+          {/* TODO: remove before production */}
+          {process.env.NODE_ENV === "development" && (
+            <div className="flex flex-col" style={{ gap: "6px", position: "relative", zIndex: 2 }}>
+              <button
+                onClick={handleDevFaucet}
+                className="flex items-center justify-center w-full cursor-pointer"
+                style={{ backgroundColor: "transparent", border: "1px dashed #545454", borderRadius: "clamp(9px, 2.91vw, 11.679px)", height: "clamp(40px, 5.5svh, 48px)" }}
+              >
+                <span className="uppercase whitespace-nowrap" style={{ fontFamily: "'Tektur', sans-serif", fontSize: "clamp(12px, 3.73vw, 15px)", fontVariationSettings: "'wdth' 100", fontWeight: 500, color: "#545454", lineHeight: 1 }}>
+                  DEV: Claim Faucet
+                </span>
+              </button>
+              {devMsg && (
+                <p style={{ fontFamily: "'Wix Madefor Display', sans-serif", fontSize: "clamp(12px, 3.73vw, 15px)", color: devMsg.startsWith("✓") ? "#00e3b9" : "#ff5100", textAlign: "center", lineHeight: 1.3 }}>
+                  {devMsg}
+                </p>
+              )}
             </div>
-            <span
-              className="uppercase whitespace-nowrap"
-              style={{
-                fontFamily: "'Tektur', sans-serif",
-                fontSize: "clamp(14px, 4.48vw, 18px)",
-                fontVariationSettings: "'wdth' 100",
-                fontWeight: 500,
-                color: "#0d0d0d",
-                lineHeight: 1,
-              }}
-            >
-              Sign up with Telegram
-            </span>
-          </button>
+          )}
         </div>
       </div>
     </div>
