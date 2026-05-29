@@ -69,7 +69,7 @@ export default function StartPage() {
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
   const [showStartTooltip, setShowStartTooltip] = useState(false);
   const { user, setUser, logout } = useUser();
-  const { isMuted, toggleMute } = useSound();
+  useSound();
 
   // When welcome was opened from MenuUnlogged, closing it should go back to menu
   const welcomeFromMenuRef = useRef(false);
@@ -435,31 +435,6 @@ export default function StartPage() {
               </span>
             </div>
           </div>
-
-          <button
-            onClick={toggleMute}
-            className="relative shrink-0 cursor-pointer"
-            style={{
-              width: "clamp(28px, 8.96vw, 36px)",
-              height: "clamp(28px, 8.96vw, 36px)",
-              background: "none",
-              border: "none",
-              padding: 0,
-            }}
-            aria-label={isMuted ? "Unmute" : "Mute"}
-          >
-            <Image
-              src={
-                isMuted
-                  ? "/assets/icons/sound-min-svgrepo-com.svg"
-                  : "/assets/icons/sound-max-svgrepo-com.svg"
-              }
-              alt={isMuted ? "Sound off" : "Sound on"}
-              fill
-              sizes="36px"
-              className="object-contain"
-            />
-          </button>
 
           <button
             onClick={() => {
