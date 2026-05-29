@@ -201,11 +201,7 @@ export default function MenuUnlogged({ onClose, onLogin, onFirstLogin }: MenuUnl
             </span>
           </button>
 
-          {/* TODO: remove before production */}
-          {[
-            { label: "Dev Player 1", id: "111111111" },
-            { label: "Dev Player 2", id: "222222222" },
-          ].map(({ label, id }) => (
+          {process.env.NODE_ENV === "development" && [{label: "Dev Player 1", id: "111111111"}, {label: "Dev Player 2", id: "222222222"}].map(({ label, id }) => (
             <button
               key={id}
               onClick={(e) => { e.stopPropagation(); handleDevLogin(id); }}

@@ -67,14 +67,6 @@ export function SoundProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Keep ref in sync so SFX callbacks (which close over ref) see the latest value
-  useEffect(() => {
-    isMutedRef.current = isMuted;
-    if (musicRef.current) {
-      musicRef.current.volume = isMuted ? 0 : MUSIC_VOLUME;
-    }
-  }, [isMuted]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const musicRef    = useRef<HTMLAudioElement | null>(null);
   const trackIdxRef = useRef(0);
 
@@ -87,6 +79,21 @@ export function SoundProvider({ children }: { children: React.ReactNode }) {
     audio.addEventListener("ended", playNextTrack, { once: true });
     audio.play().catch(() => {});
   }, []);
+
+  // Keep ref in sync so SFX callbacks (which close over ref) see the latest value
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+    const audio = musicRef.current;
+    if (!audio) return;
+    if (isMuted) {
+      audio.volume = 0;
+    } else {
+      audio.volume = MUSIC_VOLUME;
+      // track may have ended silently while muted — restart playback
+      if (audio.ended) playNextTrack();
+      else if (audio.paused) audio.play().catch(() => {});
+    }
+  }, [isMuted, playNextTrack]);
 
   // Pre-created so the iOS unlock gesture sticks to these specific elements
   const cellAudioRef = useRef<HTMLAudioElement | null>(null);

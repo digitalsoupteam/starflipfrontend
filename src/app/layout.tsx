@@ -20,6 +20,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        {process.env.NODE_ENV === "production" && (
+          // eslint-disable-next-line @next/next/no-sync-scripts
+          <script src="https://telegram.org/js/telegram-web-app.js" />
+        )}
         {devTgMock && <script dangerouslySetInnerHTML={{ __html: devTgMock }} />}
       </head>
       <body>
