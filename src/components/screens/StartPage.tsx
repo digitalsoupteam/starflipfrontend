@@ -68,6 +68,7 @@ export default function StartPage() {
   const [active, setActive] = useState<OverlayType>(null);
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
   const [showStartTooltip, setShowStartTooltip] = useState(false);
+  const dbgRef = useRef<HTMLDivElement>(null);
   const { user, setUser, logout } = useUser();
   useSound();
 
@@ -154,8 +155,10 @@ export default function StartPage() {
     let telegramId: string | undefined;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      telegramId = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString();
-    } catch {}
+      const tgUser = (window as any).Telegram?.WebApp?.initDataUnsafe?.user;
+      telegramId = tgUser?.id?.toString();
+      if (dbgRef.current) dbgRef.current.textContent = `tg:${telegramId ?? "none"} isTMA:${isTMA}`;
+    } catch (e) { if (dbgRef.current) dbgRef.current.textContent = `err:${e}`; }
     if (!telegramId) return;
 
     const getReferralCode = (): string | undefined => {
@@ -216,7 +219,8 @@ export default function StartPage() {
           }
         }
       } catch (err) {
-        console.error("TMA auto-login error:", err);
+        const msg = err instanceof Error ? err.message : String(err);
+        if (dbgRef.current) dbgRef.current.textContent += ` | api-err:${msg}`;
       }
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -334,6 +338,8 @@ export default function StartPage() {
             "radial-gradient(ellipse 80% 60% at 50% 100%, rgba(0, 180, 150, 0.45) 0%, rgba(0, 120, 100, 0.2) 40%, transparent 70%)",
         }}
       />
+
+      <div ref={dbgRef} style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999, background: "rgba(0,0,0,0.8)", color: "#00e3b9", fontSize: "11px", padding: "4px 8px", wordBreak: "break-all", pointerEvents: "none" }} />
 
       <div
         className="relative flex flex-col w-full"
