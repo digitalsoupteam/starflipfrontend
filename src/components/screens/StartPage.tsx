@@ -137,21 +137,19 @@ export default function StartPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // TMA auto-login — fires once on mount if Telegram WebApp user is available
-  useEffect(() => {
-    if (user.isLoggedIn) return;
+  // Shared TMA login logic — called on mount and on Connect click
+  const runTMALogin = async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp;
+    try { tg?.ready(); } catch {}
+    try { tg?.expand(); } catch {}
 
-    let telegramId: string | undefined;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      telegramId = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id?.toString();
-    } catch {}
+    const telegramId: string | undefined = tg?.initDataUnsafe?.user?.id?.toString();
     if (!telegramId) return;
 
     const getReferralCode = (): string | undefined => {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sp = (window as any).Telegram?.WebApp?.initDataUnsafe?.start_param as string | undefined;
+        const sp = tg?.initDataUnsafe?.start_param as string | undefined;
         if (sp?.startsWith("ref_")) return sp;
       } catch {}
       try {
@@ -161,54 +159,57 @@ export default function StartPage() {
       return undefined;
     };
 
-    (async () => {
+    try {
+      const data = await api.post<AuthResponse>("/auth/telegram", {
+        telegramId,
+        referralCode: getReferralCode(),
+      });
+      const p = data.player;
+      const ethBalance = `${weiToEth(p.balance ?? "0")} ETH`;
+      const baseUser = {
+        accId: p.playerId,
+        ethBalance,
+        pts: `${p.points} PTS`,
+        isLoggedIn: true,
+        inviteCode: p.inviteCode ?? "",
+        inviteLink: p.inviteLink ?? "",
+      };
+      setUser(baseUser);
+
       try {
-        const data = await api.post<AuthResponse>("/auth/telegram", {
-          telegramId,
-          referralCode: getReferralCode(),
-        });
-        const p = data.player;
-        const ethBalance = `${weiToEth(p.balance ?? "0")} ETH`;
-        const baseUser = {
-          accId: p.playerId,
-          ethBalance,
-          pts: `${p.points} PTS`,
-          isLoggedIn: true,
-          inviteCode: p.inviteCode ?? "",
-          inviteLink: p.inviteLink ?? "",
-        };
-        setUser(baseUser);
+        const claim = await api.post<ClaimPointsResponse>("/game/claim-points");
+        setUser({ ...baseUser, pts: `${claim.points} PTS` });
 
         try {
-          const claim = await api.post<ClaimPointsResponse>("/game/claim-points");
-          setUser({ ...baseUser, pts: `${claim.points} PTS` });
-
-          try {
-            const faucet = await api.post<FaucetResponse>("/game/faucet");
-            const finalUser = {
-              ...baseUser,
-              ethBalance: `${weiToEth(faucet.balance)} ETH`,
-              pts: `${claim.points} PTS`,
-            };
-            setUser(finalUser);
-            if (faucet.isFirstLogin && !localStorage.getItem("sf:welcome-seen")) {
-              localStorage.setItem("sf:welcome-seen", "1");
-              setTimeout(() => {
-                setActive((prev) => (isPopupBlocked(prev) ? prev : "welcome"));
-              }, 5000);
-            }
-          } catch {
-            // non-critical — mainnet blocks faucet with 403
+          const faucet = await api.post<FaucetResponse>("/game/faucet");
+          const finalUser = {
+            ...baseUser,
+            ethBalance: `${weiToEth(faucet.balance)} ETH`,
+            pts: `${claim.points} PTS`,
+          };
+          setUser(finalUser);
+          if (faucet.isFirstLogin && !localStorage.getItem("sf:welcome-seen")) {
+            localStorage.setItem("sf:welcome-seen", "1");
+            setTimeout(() => {
+              setActive((prev) => (isPopupBlocked(prev) ? prev : "welcome"));
+            }, 5000);
           }
-        } catch (err) {
-          if (!(err instanceof ApiError && err.status === 429)) {
-            console.error("Auto-login post-auth error:", err);
-          }
+        } catch {
+          // non-critical — mainnet blocks faucet with 403
         }
       } catch (err) {
-        console.error("TMA auto-login error:", err);
+        if (!(err instanceof ApiError && err.status === 429)) {
+          console.error("Auto-login post-auth error:", err);
+        }
       }
-    })();
+    } catch (err) {
+      console.error("TMA auto-login error:", err);
+    }
+  };
+
+  // Auto-login on mount
+  useEffect(() => {
+    if (!user.isLoggedIn) runTMALogin();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -383,7 +384,10 @@ export default function StartPage() {
                 </span>
               </div>
               <button
-                onClick={() => setActive(user.isLoggedIn ? "menu" : "welcome")}
+                onClick={() => {
+                  if (user.isLoggedIn) { setActive("menu"); return; }
+                  if (isTMA) { runTMALogin(); } else { setActive("welcome"); }
+                }}
                 style={{
                   fontFamily: "'Wix Madefor Display', sans-serif",
                   fontSize: "clamp(13px, 4.47vw, 18px)",
@@ -440,6 +444,8 @@ export default function StartPage() {
             onClick={() => {
               if (user.isLoggedIn) {
                 setActive(active === "menu" ? null : "menu");
+              } else if (isTMA) {
+                runTMALogin();
               } else {
                 welcomeFromMenuRef.current = true;
                 setActive("welcome");
