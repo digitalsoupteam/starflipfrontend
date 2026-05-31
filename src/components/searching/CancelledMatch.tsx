@@ -2,15 +2,34 @@
 
 import Image from "next/image";
 
+export type CancelReason = "timeout" | "afk" | "balance";
+
 interface CancelledMatchProps {
-  onStartAnother: () => void;
+  onClose: () => void;
+  reason?: CancelReason;
 }
 
-export default function CancelledMatch({ onStartAnother }: CancelledMatchProps) {
+const REASON_CONTENT: Record<CancelReason, { title: string[]; subtitle: string }> = {
+  timeout: {
+    title: ["Search", "cancelled"],
+    subtitle: "Reason: long wait",
+  },
+  afk: {
+    title: ["Match", "cancelled"],
+    subtitle: "Reason: one player AFK",
+  },
+  balance: {
+    title: ["Search", "cancelled"],
+    subtitle: "Reason: not enough ETH for the bid",
+  },
+};
+
+export default function CancelledMatch({ onClose, reason = "timeout" }: CancelledMatchProps) {
+  const { title, subtitle } = REASON_CONTENT[reason];
   return (
     <div
       className="flex items-center justify-center w-full h-full"
-      onClick={onStartAnother}
+      onClick={onClose}
     >
       <div
         className="relative overflow-hidden"
@@ -29,6 +48,25 @@ export default function CancelledMatch({ onStartAnother }: CancelledMatchProps) 
         onClick={(e) => e.stopPropagation()}
       >
 
+        {/* X close button top-right */}
+        <button
+          onClick={onClose}
+          className="absolute flex items-center justify-center cursor-pointer"
+          style={{
+            top: "clamp(14px, 4vw, 18px)",
+            right: "clamp(14px, 4vw, 18px)",
+            width: "clamp(28px, 7.5vw, 32px)",
+            height: "clamp(28px, 7.5vw, 32px)",
+            zIndex: 4,
+            background: "transparent",
+            border: "none",
+            padding: 0,
+          }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" style={{ width: "100%", height: "100%" }}>
+            <path d="M6 6L18 18M18 6L6 18" stroke="#00e3b9" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
 
         <div
           className="absolute pointer-events-none"
@@ -74,8 +112,7 @@ export default function CancelledMatch({ onStartAnother }: CancelledMatchProps) 
               lineHeight: 1.05,
             }}
           >
-            <p>Match</p>
-            <p>cancelled</p>
+            {title.map((line, i) => <p key={i}>{line}</p>)}
           </div>
 
           <p
@@ -88,12 +125,12 @@ export default function CancelledMatch({ onStartAnother }: CancelledMatchProps) 
               maxWidth: "clamp(200px, 68.78vw, 276px)",
             }}
           >
-            Your opponent hasn&apos;t been found or has left. You can start another match. Your money and PTS are saved.
+            {subtitle}
           </p>
         </div>
 
         <button
-          onClick={onStartAnother}
+          onClick={onClose}
           className="flex items-center justify-center cursor-pointer shrink-0 relative"
           style={{
             background: "rgba(0, 227, 185, 0.3)",
@@ -102,7 +139,6 @@ export default function CancelledMatch({ onStartAnother }: CancelledMatchProps) 
             height: "clamp(44px, 6.41svh, 56px)",
             paddingLeft: "clamp(12px, 4.07vw, 16.35px)",
             paddingRight: "clamp(12px, 4.07vw, 16.35px)",
-            gap: "clamp(3px, 0.87vw, 3.5px)",
             zIndex: 2,
             alignSelf: "flex-start",
           }}
@@ -118,11 +154,8 @@ export default function CancelledMatch({ onStartAnother }: CancelledMatchProps) 
               lineHeight: 1,
             }}
           >
-            start another
+            OK
           </span>
-          <div className="relative shrink-0" style={{ width: "clamp(10px, 4.07vw, 16.35px)", height: "clamp(16px, 6.39vw, 25.69px)" }}>
-            <Image src="/assets/icons/arrow.svg" alt="→" fill sizes="16px" className="object-contain" />
-          </div>
         </button>
       </div>
     </div>

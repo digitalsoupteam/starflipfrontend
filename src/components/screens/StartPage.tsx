@@ -10,7 +10,7 @@ import PopupInviteRef from "@/components/popups/PopupInviteRef";
 import MenuLogged from "@/components/menus/MenuLogged";
 import MenuUnlogged from "../menus/MenuUnlogged";
 import SearchingMatch from "@/components/searching/SearchingMatch";
-import CancelledMatch from "@/components/searching/CancelledMatch";
+import CancelledMatch, { CancelReason } from "@/components/searching/CancelledMatch";
 import Game from "@/components/screens/Game";
 import { useUser } from "@/context/UserContext";
 import { useSound } from "@/context/SoundContext";
@@ -66,6 +66,7 @@ function isPopupType(v: OverlayType): v is PopupType {
 
 export default function StartPage() {
   const [active, setActive] = useState<OverlayType>(null);
+  const [cancelReason, setCancelReason] = useState<CancelReason>("timeout");
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
   const [showStartTooltip, setShowStartTooltip] = useState(false);
   const { user, setUser, logout } = useUser();
@@ -247,6 +248,7 @@ export default function StartPage() {
         if (data.match.status === "active") {
           setActive("game");
         } else if (data.match.status === "finished") {
+          setCancelReason("afk");
           setActive("cancelled");
         }
       } catch (err) {
@@ -270,7 +272,12 @@ export default function StartPage() {
       }
     } catch (err) {
       console.error("Join error:", err);
-      setActive("searching");
+      if (err instanceof ApiError && err.message.toLowerCase().includes("insufficient")) {
+        setCancelReason("balance");
+        setActive("cancelled");
+      } else {
+        setActive("searching");
+      }
     }
   };
 
@@ -740,14 +747,11 @@ export default function StartPage() {
             <SearchingMatch
               onStop={close}
               onOpenChat={() => {}}
-              onCancel={() => setActive("cancelled")}
+              onCancel={() => { setCancelReason("timeout"); setActive("cancelled"); }}
             />
           )}
           {active === "cancelled" && (
-            <CancelledMatch onStartAnother={() => {
-              setActive(null);
-              handleStartGame();
-            }} />
+            <CancelledMatch reason={cancelReason} onClose={() => setActive(null)} />
           )}
           {active === "menu" &&
             (user.isLoggedIn ? (

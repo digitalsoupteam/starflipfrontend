@@ -62,7 +62,7 @@ export default function SearchingMatch({ onStop, onOpenChat, onCancel }: Searchi
     onStop();
   };
 
-  // Auto-cancel if no match found within 30s
+  // Auto-cancel if no match found within 60s
   useEffect(() => {
     const timer = setTimeout(async () => {
       try {
@@ -71,7 +71,7 @@ export default function SearchingMatch({ onStop, onOpenChat, onCancel }: Searchi
         // ignore
       }
       onCancel?.();
-    }, 30000);
+    }, 60000);
     return () => clearTimeout(timer);
   }, [onCancel]);
 
