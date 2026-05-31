@@ -263,7 +263,7 @@ export default function StartPage() {
   const handleStartGame = async () => {
     try {
       const token = sessionStorage.getItem("token") ?? "";
-      const data = await api.post<JoinResponse>("/game/join", { bid: "10000000000000000", token });
+      const data = await api.post<JoinResponse>("/game/join", { bid: "5000000000000000", token });
       setCurrentMatch(data.match);
       if (data.match.status === "active") {
         setActive("game");
