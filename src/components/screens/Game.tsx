@@ -111,6 +111,7 @@ export default function Game({
   // Stable ref prevents fetchResult closure from capturing a stale user
   const userRef = useRef(user);
   useEffect(() => { userRef.current = user; }, [user]);
+  const resultFetchedRef = useRef(false);
   const { isMuted, toggleMute, playCellSound, playWinSound } = useSound();
   const effectiveMyPlayerId = myPlayerId || user.accId;
 
@@ -224,6 +225,8 @@ export default function Game({
 
   const fetchResult = useCallback(
     async (mId: string, myPid: string) => {
+      if (resultFetchedRef.current) return;
+      resultFetchedRef.current = true;
       try {
         const data = await api.get<{ token: string; match: Match }>(
           `/game/result/${mId}`,
