@@ -14,7 +14,7 @@ import CancelledMatch, { CancelReason } from "@/components/searching/CancelledMa
 import Game from "@/components/screens/Game";
 import { useUser } from "@/context/UserContext";
 import { useSound } from "@/context/SoundContext";
-import { api, ApiError, weiToNum, weiToEth, Match, MatchResponse, JoinResponse, ResumeResponse, BoardCell, AuthResponse, ClaimPointsResponse, FaucetResponse } from "@/lib/api";
+import { api, ApiError, weiToNum, weiToEth, Match, MatchResponse, JoinResponse, ResumeResponse, BoardCell, AuthResponse, FaucetResponse } from "@/lib/api";
 
 const HOW_TO_PLAY_URL =
   "https://www.notion.so/StarFlip-How-to-Play-36e95daac839807aab01ccbc1bc3d8a5?pvs=28";
@@ -191,30 +191,19 @@ export default function StartPage() {
         setUser(baseUser);
 
         try {
-          const claim = await api.post<ClaimPointsResponse>("/game/claim-points");
-          setUser({ ...baseUser, pts: `${claim.points} PTS` });
-
-          try {
-            const faucet = await api.post<FaucetResponse>("/game/faucet");
-            const finalUser = {
-              ...baseUser,
-              ethBalance: `${weiToEth(faucet.balance)} ETH`,
-              pts: `${claim.points} PTS`,
-            };
-            setUser(finalUser);
-            if (faucet.isFirstLogin && !localStorage.getItem("sf:welcome-seen")) {
-              localStorage.setItem("sf:welcome-seen", "1");
-              setTimeout(() => {
-                setActive((prev) => (isPopupBlocked(prev) ? prev : "welcome"));
-              }, 5000);
-            }
-          } catch {
-            // non-critical — mainnet blocks faucet with 403
+          const faucet = await api.post<FaucetResponse>("/game/faucet");
+          setUser({
+            ...baseUser,
+            ethBalance: `${weiToEth(faucet.balance)} ETH`,
+          });
+          if (faucet.isFirstLogin && !localStorage.getItem("sf:welcome-seen")) {
+            localStorage.setItem("sf:welcome-seen", "1");
+            setTimeout(() => {
+              setActive((prev) => (isPopupBlocked(prev) ? prev : "welcome"));
+            }, 5000);
           }
-        } catch (err) {
-          if (!(err instanceof ApiError && err.status === 429)) {
-            console.error("Auto-login post-auth error:", err);
-          }
+        } catch {
+          // non-critical — mainnet blocks faucet with 403
         }
       } catch (err) {
         console.error("TMA auto-login error:", err);
