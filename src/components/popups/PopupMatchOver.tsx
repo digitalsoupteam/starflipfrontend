@@ -60,7 +60,7 @@ export default function PopupMatchOver({
           className="absolute pointer-events-none"
           style={{
             left: "clamp(164px, 54.48vw, 219px)",
-            top: "clamp(-28px, -5.93svh, -37px)",
+            top: "clamp(40px, 7svh, 50px)",
             width: "clamp(130px, 43.03vw, 173px)",
             height: "clamp(186px, 39.32svh, 248px)",
             zIndex: 3,

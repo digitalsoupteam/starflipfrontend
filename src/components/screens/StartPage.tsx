@@ -435,7 +435,7 @@ export default function StartPage() {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  Top
+                  Leaderboard
                 </button>
               )}
             </div>
