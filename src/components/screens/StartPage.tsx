@@ -12,6 +12,7 @@ import MenuUnlogged from "../menus/MenuUnlogged";
 import SearchingMatch from "@/components/searching/SearchingMatch";
 import CancelledMatch, { CancelReason } from "@/components/searching/CancelledMatch";
 import Game from "@/components/screens/Game";
+import Leaderboard from "@/components/screens/Leaderboard";
 import { useUser } from "@/context/UserContext";
 import { useSound } from "@/context/SoundContext";
 import { api, ApiError, weiToNum, weiToEth, Match, MatchResponse, JoinResponse, ResumeResponse, BoardCell, AuthResponse, FaucetResponse } from "@/lib/api";
@@ -43,6 +44,7 @@ type OverlayType =
   | "searching"
   | "cancelled"
   | "game"
+  | "leaderboard"
   | null;
 
 // Auto-popups are suppressed while these screens are active
@@ -275,6 +277,18 @@ export default function StartPage() {
     return opp ?? "PlayerName";
   };
 
+  if (active === "leaderboard") {
+    return (
+      <Leaderboard
+        onClose={() => setActive(null)}
+        onPlay={() => {
+          setActive(null);
+          handleStartGame();
+        }}
+      />
+    );
+  }
+
   if (active === "game") {
     return (
       <Game
@@ -405,6 +419,25 @@ export default function StartPage() {
               >
                 {user.isLoggedIn ? "Deposit" : "Connect"}
               </button>
+              {user.isLoggedIn && (
+                <button
+                  onClick={() => setActive("leaderboard")}
+                  style={{
+                    fontFamily: "'Wix Madefor Display', sans-serif",
+                    fontSize: "clamp(13px, 4.47vw, 18px)",
+                    color: "#00e3b9",
+                    lineHeight: 1,
+                    fontWeight: 500,
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Top
+                </button>
+              )}
             </div>
             <div
               className="flex items-center"
@@ -750,6 +783,7 @@ export default function StartPage() {
                 ethBalance={user.ethBalance}
                 pts={user.pts}
                 onLogout={logout}
+                onLeaderboard={() => setActive("leaderboard")}
               />
             ) : (
               <MenuUnlogged

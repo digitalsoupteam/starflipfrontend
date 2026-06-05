@@ -8,6 +8,7 @@ interface MenuLoggedProps {
   onClose: () => void;
   accId?: string;
   onLogout?: () => void;
+  onLeaderboard?: () => void;
   ethBalance?: string;
   pts?: string;
 }
@@ -25,6 +26,7 @@ export default function MenuLogged({
   onClose,
   accId = "Paramour",
   onLogout,
+  onLeaderboard,
   ethBalance,
   pts,
 }: MenuLoggedProps) {
@@ -234,6 +236,10 @@ export default function MenuLogged({
 
         <button onClick={() => window.open("https://www.notion.so/StarFlip-How-to-Play-36e95daac839807aab01ccbc1bc3d8a5?pvs=28", "_blank")} style={{ fontFamily: "'Wix Madefor Display', sans-serif", fontSize: "clamp(16px, 4.97vw, 20px)", fontWeight: 700, color: "#00e3b9", background: "none", border: "none", padding: 0, cursor: "pointer", whiteSpace: "nowrap" }}>
           How to play
+        </button>
+
+        <button onClick={() => { onLeaderboard?.(); onClose(); }} style={{ fontFamily: "'Wix Madefor Display', sans-serif", fontSize: "clamp(16px, 4.97vw, 20px)", fontWeight: 700, color: "#00e3b9", background: "none", border: "none", padding: 0, cursor: "pointer", whiteSpace: "nowrap" }}>
+          Leaderboard
         </button>
 
         <button onClick={() => window.open("https://t.me/unnamedDev0x", "_blank")} style={{ fontFamily: "'Wix Madefor Display', sans-serif", fontSize: "clamp(16px, 4.97vw, 20px)", fontWeight: 700, color: "#00e3b9", background: "none", border: "none", padding: 0, cursor: "pointer", whiteSpace: "nowrap" }}>

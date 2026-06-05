@@ -176,3 +176,19 @@ export interface FaucetResponse {
   points?: number;
   isFirstLogin: boolean;
 }
+
+export interface LeaderboardPlayer {
+  rank: number;
+  playerId: string;
+  points: number;
+  games: number;
+  wins: number;
+}
+
+export interface LeaderboardResponse {
+  players: LeaderboardPlayer[];
+  total: number;
+  page: number;
+  limit: number;
+  myRank: LeaderboardPlayer & { rank: number | null } | null;
+}
