@@ -789,10 +789,6 @@ export default function StartPage() {
               <MenuUnlogged
                 onClose={close}
                 onLogin={close}
-                onFirstLogin={() => {
-                  welcomeFromMenuRef.current = false;
-                  setActive((prev) => (isPopupBlocked(prev) ? prev : "welcome"));
-                }}
               />
             ))}
         </PopupOverlay>

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useUser } from "@/context/UserContext";
-import { api, ApiError, weiToEth, AuthResponse, ClaimPointsResponse, FaucetResponse } from "@/lib/api";
+import { api, weiToEth, AuthResponse, FaucetResponse } from "@/lib/api";
 
 const HOW_TO_PLAY_URL =
   "https://www.notion.so/StarFlip-How-to-Play-36e95daac839807aab01ccbc1bc3d8a5?pvs=28";
@@ -10,10 +10,9 @@ const HOW_TO_PLAY_URL =
 interface MenuUnloggedProps {
   onClose: () => void;
   onLogin?: () => void;
-  onFirstLogin?: () => void; // triggers WelcomeBonus popup on first-ever login
 }
 
-export default function MenuUnlogged({ onClose, onLogin, onFirstLogin }: MenuUnloggedProps) {
+export default function MenuUnlogged({ onClose, onLogin }: MenuUnloggedProps) {
   const { setUser } = useUser();
 
   // Read at click time, not at render time — avoids issues if TG SDK loads late
@@ -54,23 +53,10 @@ export default function MenuUnlogged({ onClose, onLogin, onFirstLogin }: MenuUnl
     onClose();
 
     try {
-      const claimData = await api.post<ClaimPointsResponse>("/game/claim-points");
-      setUser({ accId: playerId, ethBalance, pts: `${claimData.points} PTS`, isLoggedIn: true, inviteCode, inviteLink });
-
-      try {
-        const faucetData = await api.post<FaucetResponse>("/game/faucet");
-        setUser({ accId: playerId, ethBalance: `${weiToEth(faucetData.balance)} ETH`, pts: `${claimData.points} PTS`, isLoggedIn: true, inviteCode, inviteLink });
-      } catch {
-        // non-critical — mainnet returns 403, testnet may have cooldown
-      }
-
-      onFirstLogin?.();
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 429) {
-        // returning user — daily bonus already claimed today
-      } else {
-        console.error("Post-auth flow error:", err);
-      }
+      const faucetData = await api.post<FaucetResponse>("/game/faucet");
+      setUser({ accId: playerId, ethBalance: `${weiToEth(faucetData.balance)} ETH`, pts: `${initialPoints} PTS`, isLoggedIn: true, inviteCode, inviteLink });
+    } catch {
+      // non-critical — mainnet returns 403, testnet may have cooldown
     }
   };
 

@@ -168,6 +168,7 @@ export interface MeResponse {
 export interface ClaimPointsResponse {
   message: string;
   points: number;
+  isFirstLogin: boolean;
 }
 
 export interface FaucetResponse {
