@@ -9,7 +9,7 @@ interface MenuLoggedProps {
   accId?: string;
   onLogout?: () => void;
   onLeaderboard?: () => void;
-  ethBalance?: string;
+  usdtBalance?: string;
   pts?: string;
 }
 
@@ -27,7 +27,7 @@ export default function MenuLogged({
   accId = "Paramour",
   onLogout,
   onLeaderboard,
-  ethBalance,
+  usdtBalance,
   pts,
 }: MenuLoggedProps) {
   const { user } = useUser();
@@ -88,19 +88,19 @@ export default function MenuLogged({
         <Image src="/assets/icons/x.svg" alt="Close" fill className="object-contain" />
       </button>
 
-      {(ethBalance || pts) && (
+      {(usdtBalance || pts) && (
         <div
           className="flex flex-col items-center"
           style={{ gap: "4px" }}
           onClick={(e) => e.stopPropagation()}
         >
-          {ethBalance && (
+          {usdtBalance && (
             <div className="flex items-center" style={{ gap: "clamp(4px, 0.8vw, 7px)" }}>
               <div className="relative shrink-0" style={{ width: "clamp(14px, 4.48vw, 18px)", height: "clamp(14px, 4.48vw, 18px)" }}>
-                <Image src="/assets/icons/eth.png" alt="ETH" fill sizes="18px" className="object-contain" />
+                <Image src="/assets/icons/usdt.svg" alt="USDT" fill sizes="18px" className="object-contain" />
               </div>
               <span className="font-bold whitespace-nowrap" style={{ fontFamily: "'Wix Madefor Display', sans-serif", fontSize: "clamp(14px, 4.48vw, 18px)", color: "#ffffff", lineHeight: 1 }}>
-                {ethBalance}
+                {usdtBalance}
               </span>
             </div>
           )}
@@ -196,7 +196,7 @@ export default function MenuLogged({
 
         <div className="w-full flex flex-col" style={{ gap: "6px", paddingTop: "clamp(6px, 1.2svh, 10px)", borderTop: "1px solid rgba(255,255,255,0.07)" }}>
           <p style={{ fontFamily: "'Wix Madefor Display', sans-serif", fontSize: "clamp(10px, 3vw, 12px)", fontWeight: 500, color: "rgba(255,255,255,0.4)", lineHeight: 1.4 }}>
-            Ref.bonus: 50% service ETH fees + 5 pts per friend game
+            Ref.bonus: 50% service USDT fees + 5 pts per friend game
           </p>
           <div className="flex items-center w-full" style={{ gap: "8px" }}>
             <p style={{ fontFamily: "'Wix Madefor Display', sans-serif", fontSize: "clamp(10px, 3vw, 12px)", fontWeight: 500, color: "rgba(255,255,255,0.4)", lineHeight: 1, flexShrink: 0 }}>

@@ -12,7 +12,7 @@ interface PopupMatchOverProps {
 export default function PopupMatchOver({
   onClose,
   onPlayAgain,
-  result = "0.0000414 ETH",
+  result = "0 USDT",
   profit = "+ 20 %",
   points = "+ 10 PTS",
   title = "Nice try!",

@@ -20,7 +20,7 @@ const REASON_CONTENT: Record<CancelReason, { title: string[]; subtitle: string }
   },
   balance: {
     title: ["Search", "cancelled"],
-    subtitle: "Reason: not enough ETH for the bid",
+    subtitle: "Reason: not enough USDT for the bid",
   },
 };
 

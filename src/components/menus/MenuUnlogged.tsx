@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useUser } from "@/context/UserContext";
-import { api, weiToEth, AuthResponse, FaucetResponse } from "@/lib/api";
+import { api, formatUsdt, AuthResponse, FaucetResponse } from "@/lib/api";
 
 const HOW_TO_PLAY_URL =
   "https://www.notion.so/StarFlip-How-to-Play-36e95daac839807aab01ccbc1bc3d8a5?pvs=28";
@@ -47,14 +47,14 @@ export default function MenuUnlogged({ onClose, onLogin }: MenuUnloggedProps) {
     inviteCode: string,
     inviteLink: string,
   ) => {
-    const ethBalance = `${weiToEth(initialBalance)} ETH`;
-    setUser({ accId: playerId, ethBalance, pts: `${initialPoints} PTS`, isLoggedIn: true, inviteCode, inviteLink });
+    const usdtBalance = `${formatUsdt(initialBalance)} USDT`;
+    setUser({ accId: playerId, usdtBalance, pts: `${initialPoints} PTS`, isLoggedIn: true, inviteCode, inviteLink });
     onLogin?.();
     onClose();
 
     try {
       const faucetData = await api.post<FaucetResponse>("/game/faucet");
-      setUser({ accId: playerId, ethBalance: `${weiToEth(faucetData.balance)} ETH`, pts: `${initialPoints} PTS`, isLoggedIn: true, inviteCode, inviteLink });
+      setUser({ accId: playerId, usdtBalance: `${formatUsdt(faucetData.balance)} USDT`, pts: `${initialPoints} PTS`, isLoggedIn: true, inviteCode, inviteLink });
     } catch {
       // non-critical — mainnet returns 403, testnet may have cooldown
     }

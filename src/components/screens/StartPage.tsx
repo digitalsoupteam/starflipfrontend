@@ -15,7 +15,7 @@ import Game from "@/components/screens/Game";
 import Leaderboard from "@/components/screens/Leaderboard";
 import { useUser } from "@/context/UserContext";
 import { useSound } from "@/context/SoundContext";
-import { api, ApiError, weiToNum, weiToEth, Match, MatchResponse, JoinResponse, ResumeResponse, BoardCell, AuthResponse, FaucetResponse } from "@/lib/api";
+import { api, ApiError, usdtToNum, formatUsdt, Match, MatchResponse, JoinResponse, ResumeResponse, BoardCell, AuthResponse, FaucetResponse } from "@/lib/api";
 
 const HOW_TO_PLAY_URL =
   "https://www.notion.so/StarFlip-How-to-Play-36e95daac839807aab01ccbc1bc3d8a5?pvs=28";
@@ -31,7 +31,7 @@ function boardToCells(board: BoardCell[], myPlayerId: string): Cell[] {
       : bc.openedBy === myPlayerId
         ? (bc.id % 2 === 0 ? 1 : 2)
         : (bc.id % 2 === 0 ? 3 : 4)) as CellStatus,
-    value: weiToNum(bc.value),
+    value: usdtToNum(bc.value),
   }));
 }
 
@@ -181,10 +181,10 @@ export default function StartPage() {
           referralCode: getReferralCode(),
         });
         const p = data.player;
-        const ethBalance = `${weiToEth(p.balance ?? "0")} ETH`;
+        const usdtBalance = `${formatUsdt(p.balance ?? "0")} USDT`;
         const baseUser = {
           accId: p.playerId,
-          ethBalance,
+          usdtBalance,
           pts: `${p.points} PTS`,
           isLoggedIn: true,
           inviteCode: p.inviteCode ?? "",
@@ -196,7 +196,7 @@ export default function StartPage() {
           const faucet = await api.post<FaucetResponse>("/game/faucet");
           setUser({
             ...baseUser,
-            ethBalance: `${weiToEth(faucet.balance)} ETH`,
+            usdtBalance: `${formatUsdt(faucet.balance)} USDT`,
           });
           if (faucet.isFirstLogin && !localStorage.getItem("sf:welcome-seen")) {
             localStorage.setItem("sf:welcome-seen", "1");
@@ -254,7 +254,7 @@ export default function StartPage() {
   const handleStartGame = async () => {
     try {
       const token = sessionStorage.getItem("token") ?? "";
-      const data = await api.post<JoinResponse>("/game/join", { bid: "5000000000000000", token });
+      const data = await api.post<JoinResponse>("/game/join", { bid: "25", token: "USDT" });
       setCurrentMatch(data.match);
       if (data.match.status === "active") {
         setActive("game");
@@ -384,8 +384,8 @@ export default function StartPage() {
                   }}
                 >
                   <Image
-                    src="/assets/icons/eth.png"
-                    alt="ETH"
+                    src="/assets/icons/usdt.svg"
+                    alt="USDT"
                     fill
                     sizes="18px"
                     className="object-contain"
@@ -399,7 +399,7 @@ export default function StartPage() {
                     lineHeight: 1,
                   }}
                 >
-                  {user.ethBalance}
+                  {user.usdtBalance}
                 </span>
               </div>
               <button
@@ -780,7 +780,7 @@ export default function StartPage() {
               <MenuLogged
                 onClose={close}
                 accId={user.accId}
-                ethBalance={user.ethBalance}
+                usdtBalance={user.usdtBalance}
                 pts={user.pts}
                 onLogout={logout}
                 onLeaderboard={() => setActive("leaderboard")}

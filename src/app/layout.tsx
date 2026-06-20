@@ -14,7 +14,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const devTgMock = process.env.NODE_ENV === "development"
-    ? `if(!window.Telegram){window.Telegram={WebApp:{initDataUnsafe:{user:{id:111111111},start_param:undefined},ready:function(){},expand:function(){},close:function(){}}}};console.log('[DEV] Telegram mock: id=111111111');`
+    ? `if(!window.Telegram){const p=new URLSearchParams(window.location.search);const id=Number(p.get("tg")||111111111);window.Telegram={WebApp:{initDataUnsafe:{user:{id},start_param:undefined},ready:function(){},expand:function(){},close:function(){}}};console.log('[DEV] Telegram mock: id='+id);}`
     : null;
 
   return (

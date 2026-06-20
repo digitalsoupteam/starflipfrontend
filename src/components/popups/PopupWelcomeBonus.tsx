@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { useUser } from "@/context/UserContext";
-import { api, ApiError, weiToEth, FaucetResponse } from "@/lib/api";
+import { api, ApiError, formatUsdt, FaucetResponse } from "@/lib/api";
 
 interface PopupWelcomeBonusProps {
   onClose: () => void;
@@ -21,9 +21,9 @@ export default function PopupWelcomeBonus({ onClose, onLoginInstead, isTMA = fal
     setDevMsg(null);
     try {
       const data = await api.post<FaucetResponse>("/game/faucet");
-      const ethAmount = weiToEth(data.balance);
-      setUser({ ...user, ethBalance: `${ethAmount} ETH` });
-      setDevMsg(`✓ ${ethAmount} ETH`);
+      const usdtAmount = formatUsdt(data.balance);
+      setUser({ ...user, usdtBalance: `${usdtAmount} USDT` });
+      setDevMsg(`✓ ${usdtAmount} USDT`);
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
         setDevMsg("Come back tomorrow");
@@ -90,7 +90,7 @@ export default function PopupWelcomeBonus({ onClose, onLoginInstead, isTMA = fal
             >
               {isTMA
                 ? "You've just received a welcome bonus! It has been credited to your account."
-                : "0.1 test ETH and 300 PTS for first login, and 30 PTS per everyday login"}
+                : "2000 test USDT and 300 PTS for first login, and 30 PTS per everyday login"}
             </p>
           </div>
           <button

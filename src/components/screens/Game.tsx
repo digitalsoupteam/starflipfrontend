@@ -6,7 +6,7 @@ import { useUser } from "@/context/UserContext";
 import { useSound } from "@/context/SoundContext";
 import PopupOverlay from "@/components/common/PopupOverlay";
 import PopupMatchOver from "@/components/popups/PopupMatchOver";
-import { api, weiToNum, weiToEth, BoardCell, Match, MatchResponse, MoveResponse, MeResponse } from "@/lib/api";
+import { api, usdtToNum, formatUsdt, BoardCell, Match, MatchResponse, MoveResponse, MeResponse } from "@/lib/api";
 
 const HOW_TO_PLAY_URL =
   "https://www.notion.so/StarFlip-How-to-Play-36e95daac839807aab01ccbc1bc3d8a5?pvs=28";
@@ -156,7 +156,7 @@ export default function Game({
       Array.from({ length: 12 }, (_, i) => ({
         id: i,
         status: "closed" as CellStatus,
-        value: parseFloat((Math.random() * 0.001 + 0.00001).toFixed(8)),
+        value: Math.floor(Math.random() * 8) + 1,
       })),
   );
 
@@ -179,23 +179,17 @@ export default function Game({
   // Visual variant assigned once per cell so it doesn't change on re-render
   const cellVariantsRef = useRef<Map<number, 1 | 2 | 3 | 4>>(new Map());
 
-  const fmtEth = (n: number) => `${n.toFixed(8)} ETH`;
+  const fmtUsdt = (n: number) => `${Math.trunc(n)} USDT`;
 
-  // Adapts decimal precision so small values always show 3+ significant digits
   const fmtCell = (n: number): string => {
-    if (n <= 0) return "0";
-    if (n >= 0.01)  return n.toFixed(4);
-    if (n >= 0.001) return n.toFixed(5);
-    if (n >= 0.0001) return n.toFixed(6);
-    if (n >= 0.00001) return n.toFixed(7);
-    return n.toFixed(8);
+    return Math.trunc(n).toString();
   };
 
   const updateFromBoard = useCallback(
     (board: BoardCell[], myPid: string) => {
       const newCells = board.map((bc) => {
         if (bc.openedBy === null) {
-          return { id: bc.id, status: "closed" as CellStatus, value: weiToNum(bc.value) };
+          return { id: bc.id, status: "closed" as CellStatus, value: usdtToNum(bc.value) };
         }
         if (!cellVariantsRef.current.has(bc.id)) {
           const isMe = bc.openedBy === myPid;
@@ -207,16 +201,16 @@ export default function Game({
         return {
           id: bc.id,
           status: cellVariantsRef.current.get(bc.id)!,
-          value: weiToNum(bc.value),
+          value: usdtToNum(bc.value),
         };
       });
       setCells(newCells);
       const myTot = board
         .filter((bc) => bc.openedBy === myPid)
-        .reduce((sum, bc) => sum + weiToNum(bc.value), 0);
+        .reduce((sum, bc) => sum + usdtToNum(bc.value), 0);
       const oppTot = board
         .filter((bc) => bc.openedBy !== null && bc.openedBy !== myPid)
-        .reduce((sum, bc) => sum + weiToNum(bc.value), 0);
+        .reduce((sum, bc) => sum + usdtToNum(bc.value), 0);
       setMyTotal(myTot);
       setOpponentTotal(oppTot);
     },
@@ -235,12 +229,12 @@ export default function Game({
         updateFromBoard(board, myPid);
         const myTot = board
           .filter((bc) => bc.openedBy === myPid)
-          .reduce((sum, bc) => sum + weiToNum(bc.value), 0);
+          .reduce((sum, bc) => sum + usdtToNum(bc.value), 0);
         const oppTot = board
           .filter((bc) => bc.openedBy !== null && bc.openedBy !== myPid)
-          .reduce((sum, bc) => sum + weiToNum(bc.value), 0);
+          .reduce((sum, bc) => sum + usdtToNum(bc.value), 0);
         const isWinner = myTot >= oppTot;
-        const bid = (myTot + oppTot) / 2; // each player's stake = half the pot
+        const bid = usdtToNum(data.match.bid);
         const profitAbs = myTot - bid;
         const profitPct = bid > 0 ? Math.round((profitAbs / bid) * 100) : 0;
         const profitStr = profitPct >= 0 ? `+ ${profitPct} %` : `${profitPct} %`;
@@ -253,11 +247,11 @@ export default function Game({
           const ptsStr = ptsDiff >= 0 ? `+ ${ptsDiff} PTS` : `${ptsDiff} PTS`;
           setUser({
             ...userRef.current,
-            ethBalance: `${weiToEth(me.player.balance)} ETH`,
+            usdtBalance: `${formatUsdt(me.player.balance)} USDT`,
             pts: `${newPts} PTS`,
           });
           setMatchResultData({
-            result: fmtEth(myTot),
+            result: fmtUsdt(myTot),
             profit: profitStr,
             points: ptsStr,
             title: isWinner ? "You Won!" : "Nice try!",
@@ -265,7 +259,7 @@ export default function Game({
         } catch {
           // /game/me failed — fall back to static point estimates
           setMatchResultData({
-            result: fmtEth(myTot),
+            result: fmtUsdt(myTot),
             profit: profitStr,
             points: isWinner ? "+ 30 PTS" : "+ 10 PTS",
             title: isWinner ? "You Won!" : "Nice try!",
@@ -353,7 +347,7 @@ export default function Game({
             ASTRA_COMMENTS[Math.floor(Math.random() * ASTRA_COMMENTS.length)];
           setYouGot({
             visible: true,
-            amount: weiToNum(openedCell.value),
+            amount: usdtToNum(openedCell.value),
             commentFile: randomComment,
           });
           setTimeout(
@@ -539,7 +533,7 @@ export default function Game({
                   lineHeight: 1,
                 }}
               >
-                + {fmtCell(youGot.amount)} ETH
+                + {fmtCell(youGot.amount)} USDT
               </span>
             </div>
           </div>
@@ -759,7 +753,7 @@ export default function Game({
                   lineHeight: 1.3,
                   whiteSpace: "pre-line",
                 }}
-              >{`Total:\n${fmtEth(myTotal)}`}</span>
+              >{`Total:\n${fmtUsdt(myTotal)}`}</span>
             </div>
           </div>
           <div
@@ -813,7 +807,7 @@ export default function Game({
                   textAlign: "right",
                   whiteSpace: "pre-line",
                 }}
-              >{`Total:\n${fmtEth(opponentTotal)}`}</span>
+              >{`Total:\n${fmtUsdt(opponentTotal)}`}</span>
             </div>
           </div>
         </div>
@@ -828,7 +822,7 @@ export default function Game({
                 setShowMatchOver(false);
                 onPlayAgain?.();
               }}
-              result={matchResultData?.result ?? fmtEth(myTotal)}
+              result={matchResultData?.result ?? fmtUsdt(myTotal)}
               profit={matchResultData?.profit ?? "+ 20 %"}
               points={matchResultData?.points ?? "+ 10 PTS"}
               title={matchResultData?.title ?? "Nice try!"}

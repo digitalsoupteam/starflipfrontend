@@ -74,23 +74,17 @@ export const api = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Float for arithmetic — loses precision beyond ~9 ETH but that's acceptable here */
-export function weiToNum(wei: string | number | undefined | null): number {
-  if (wei === undefined || wei === null || wei === "" || wei === "0") return 0;
-  const n = typeof wei === "number" ? wei : Number(wei);
+/** Integer USDT values are stored as strings by the backend. */
+export function usdtToNum(value: string | number | undefined | null): number {
+  if (value === undefined || value === null || value === "" || value === "0") return 0;
+  const n = typeof value === "number" ? value : Number(value);
   if (Number.isNaN(n)) return 0;
-  return n / 1e18;
+  return Math.trunc(n);
 }
 
-/** BigInt arithmetic avoids float precision issues; shows up to 4 significant decimals */
-export function weiToEth(wei: string | number | undefined | null): string {
-  if (wei === undefined || wei === null || wei === "" || wei === "0") return "0.0";
-  const WEI_PER_ETH = BigInt("1000000000000000000");
-  const weiBI = BigInt(wei);
-  const whole = weiBI / WEI_PER_ETH;
-  const remainder = weiBI % WEI_PER_ETH;
-  const decimals = remainder.toString().padStart(18, "0").slice(0, 4).replace(/0+$/, "") || "0";
-  return `${whole}.${decimals}`;
+export function formatUsdt(value: string | number | undefined | null): string {
+  if (value === undefined || value === null || value === "" || value === "0") return "0";
+  return BigInt(String(value).split(".")[0] || "0").toString();
 }
 
 // ── Shared types ──────────────────────────────────────────────────────────────
@@ -98,15 +92,18 @@ export function weiToEth(wei: string | number | undefined | null): string {
 export interface BoardCell {
   id: number;
   openedBy: string | null;
-  value?: string; // WEI string — absent for closed cells
+  value?: string; // whole USDT string — absent for closed cells
 }
 
 export interface Match {
   matchId: string;
   status: "waiting" | "active" | "finished";
   players: string[];
+  bid: string;
+  fee: string;
+  total: string;
   currentTurn: string | null;
-  balances: { [playerId: string]: number };
+  balances: { [playerId: string]: string };
   turnStartedAt: number; // Unix ms, reset by backend on every move
   boardHash: string | null;
   lastMoveId: string | null;

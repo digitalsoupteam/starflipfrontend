@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 
 interface User {
   accId: string;
-  ethBalance: string;
+  usdtBalance: string;
   pts: string;
   isLoggedIn: boolean;
   inviteCode: string;
@@ -19,7 +19,7 @@ interface UserContextType {
 
 const defaultUser: User = {
   accId: "",
-  ethBalance: "0 ETH",
+  usdtBalance: "0 USDT",
   pts: "0 PTS",
   isLoggedIn: false,
   inviteCode: "",
