@@ -90,7 +90,7 @@ export default function PopupWelcomeBonus({ onClose, onLoginInstead, isTMA = fal
             >
               {isTMA
                 ? "You've just received a welcome bonus! It has been credited to your account."
-                : "2000 test USDT and 300 PTS for first login, and 30 PTS per everyday login"}
+                : "2000 USDT and 300 PTS for first login, and 30 PTS per everyday login"}
             </p>
           </div>
           <button
