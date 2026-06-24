@@ -179,10 +179,10 @@ export default function Game({
   // Visual variant assigned once per cell so it doesn't change on re-render
   const cellVariantsRef = useRef<Map<number, 1 | 2 | 3 | 4>>(new Map());
 
-  const fmtUsdt = (n: number) => `${Math.trunc(n)} USDT`;
+  const fmtUsdt = (n: number) => `${formatUsdt(n)} USDT`;
 
   const fmtCell = (n: number): string => {
-    return Math.trunc(n).toString();
+    return formatUsdt(n);
   };
 
   const updateFromBoard = useCallback(
@@ -230,14 +230,21 @@ export default function Game({
         const myTot = board
           .filter((bc) => bc.openedBy === myPid)
           .reduce((sum, bc) => sum + usdtToNum(bc.value), 0);
-        const oppTot = board
-          .filter((bc) => bc.openedBy !== null && bc.openedBy !== myPid)
-          .reduce((sum, bc) => sum + usdtToNum(bc.value), 0);
-        const isWinner = myTot >= oppTot;
         const bid = usdtToNum(data.match.bid);
         const profitAbs = myTot - bid;
-        const profitPct = bid > 0 ? Math.round((profitAbs / bid) * 100) : 0;
-        const profitStr = profitPct >= 0 ? `+ ${profitPct} %` : `${profitPct} %`;
+        const isProfitable = profitAbs > 0;
+        const profitPct = bid > 0
+          ? Math.round(((profitAbs / bid) * 100) * 10) / 10
+          : 0;
+        const profitPctText = Math.abs(profitPct)
+          .toFixed(1)
+          .replace(/\.0$/, "")
+          .replace(".", ",");
+        const profitStr = profitPct > 0
+          ? `+ ${profitPctText} %`
+          : profitPct < 0
+            ? `- ${profitPctText} %`
+            : "0 %";
 
         try {
           const prevPts = parseInt(userRef.current.pts) || 0;
@@ -254,15 +261,15 @@ export default function Game({
             result: fmtUsdt(myTot),
             profit: profitStr,
             points: ptsStr,
-            title: isWinner ? "You Won!" : "Nice try!",
+            title: isProfitable ? "You Won!" : "Nice try!",
           });
         } catch {
           // /game/me failed — fall back to static point estimates
           setMatchResultData({
             result: fmtUsdt(myTot),
             profit: profitStr,
-            points: isWinner ? "+ 30 PTS" : "+ 10 PTS",
-            title: isWinner ? "You Won!" : "Nice try!",
+            points: isProfitable ? "+ 30 PTS" : "+ 10 PTS",
+            title: isProfitable ? "You Won!" : "Nice try!",
           });
         }
       } catch (err) {

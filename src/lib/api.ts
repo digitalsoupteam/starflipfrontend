@@ -74,17 +74,18 @@ export const api = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Integer USDT values are stored as strings by the backend. */
+/** USDT values contain at most one decimal place. */
 export function usdtToNum(value: string | number | undefined | null): number {
   if (value === undefined || value === null || value === "" || value === "0") return 0;
   const n = typeof value === "number" ? value : Number(value);
   if (Number.isNaN(n)) return 0;
-  return Math.trunc(n);
+  return Math.round(n * 10) / 10;
 }
 
 export function formatUsdt(value: string | number | undefined | null): string {
   if (value === undefined || value === null || value === "" || value === "0") return "0";
-  return BigInt(String(value).split(".")[0] || "0").toString();
+  const amount = usdtToNum(value);
+  return amount.toFixed(1).replace(/\.0$/, "");
 }
 
 // ── Shared types ──────────────────────────────────────────────────────────────
@@ -92,7 +93,7 @@ export function formatUsdt(value: string | number | undefined | null): string {
 export interface BoardCell {
   id: number;
   openedBy: string | null;
-  value?: string; // whole USDT string — absent for closed cells
+  value?: string; // at most one decimal place — absent for closed cells
 }
 
 export interface Match {

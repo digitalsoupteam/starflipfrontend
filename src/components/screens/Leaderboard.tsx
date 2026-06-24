@@ -97,7 +97,6 @@ export default function Leaderboard({ onClose, onPlay }: LeaderboardProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
     api
       .get<LeaderboardResponse>(`/game/leaderboard?page=${page}`)
       .then(setData)
@@ -144,7 +143,7 @@ export default function Leaderboard({ onClose, onPlay }: LeaderboardProps) {
             margin: 0,
           }}
         >
-          LEADERBOARD
+          TOP
         </h1>
         <button
           onClick={onClose}
@@ -241,7 +240,10 @@ export default function Leaderboard({ onClose, onPlay }: LeaderboardProps) {
         }}
       >
         <button
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          onClick={() => {
+            setLoading(true);
+            setPage((p) => Math.max(1, p - 1));
+          }}
           disabled={page <= 1}
           style={{
             width: "32px",
@@ -271,7 +273,10 @@ export default function Leaderboard({ onClose, onPlay }: LeaderboardProps) {
           {page} / {totalPages}
         </span>
         <button
-          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          onClick={() => {
+            setLoading(true);
+            setPage((p) => Math.min(totalPages, p + 1));
+          }}
           disabled={page >= totalPages}
           style={{
             width: "32px",

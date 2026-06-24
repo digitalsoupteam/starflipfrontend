@@ -94,7 +94,7 @@ export default function PopupInviteRef({ onClose }: PopupInviteRefProps) {
                 maxWidth: "207px",
               }}
             >
-              Invite your friends and earn 50% of the service fee in USDT + 5 points for every game they play.
+              Invite your friends and earn 0.5 USDT + 5 points for every game they play.
             </p>
           </div>
           <button

@@ -253,8 +253,7 @@ export default function StartPage() {
 
   const handleStartGame = async () => {
     try {
-      const token = sessionStorage.getItem("token") ?? "";
-      const data = await api.post<JoinResponse>("/game/join", { bid: "25", token: "USDT" });
+      const data = await api.post<JoinResponse>("/game/join", { bid: "15", token: "USDT" });
       setCurrentMatch(data.match);
       if (data.match.status === "active") {
         setActive("game");
@@ -435,7 +434,7 @@ export default function StartPage() {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  Leaderboard
+                  Top
                 </button>
               )}
             </div>
