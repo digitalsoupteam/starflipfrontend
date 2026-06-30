@@ -7,6 +7,7 @@ import PopupWelcomeBonus from "@/components/popups/PopupWelcomeBonus";
 import PopupDailyBonus from "@/components/popups/PopupDailyBonus";
 import PopupAirdrop from "@/components/popups/PopupAirdrop";
 import PopupInviteRef from "@/components/popups/PopupInviteRef";
+import PopupTechnicalWorks from "@/components/popups/PopupTechnicalWorks";
 import MenuLogged from "@/components/menus/MenuLogged";
 import MenuUnlogged from "../menus/MenuUnlogged";
 import SearchingMatch from "@/components/searching/SearchingMatch";
@@ -19,6 +20,7 @@ import { api, ApiError, usdtToNum, formatUsdt, Match, MatchResponse, JoinRespons
 
 const HOW_TO_PLAY_URL =
   "https://www.notion.so/StarFlip-How-to-Play-36e95daac839807aab01ccbc1bc3d8a5?pvs=28";
+const MAINTENANCE_MODE = true;
 
 type CellStatus = "closed" | 1 | 2 | 3 | 4;
 interface Cell { id: number; status: CellStatus; value: number }
@@ -106,6 +108,7 @@ export default function StartPage() {
 
   // Daily bonus fires 30s after login — suppressed during active screens
   useEffect(() => {
+    if (MAINTENANCE_MODE) return;
     if (!user.isLoggedIn) return;
     const timer = setTimeout(() => {
       setActive((prev) => {
@@ -119,6 +122,7 @@ export default function StartPage() {
 
   // Airdrop popup fires 60s after mount if no other popup is open
   useEffect(() => {
+    if (MAINTENANCE_MODE) return;
     const timer = setTimeout(() => {
       setActive((prev) => {
         if (isPopupBlocked(prev) || prev !== null) return prev;
@@ -130,6 +134,7 @@ export default function StartPage() {
   }, []);
 
   useEffect(() => {
+    if (MAINTENANCE_MODE) return;
     const interval = setInterval(() => {
       setActive((prev) => {
         if (isPopupBlocked(prev) || prev !== null) return prev;
@@ -152,6 +157,7 @@ export default function StartPage() {
 
   // TMA auto-login — fires once on mount if Telegram WebApp user data is present
   useEffect(() => {
+    if (MAINTENANCE_MODE) return;
     if (user.isLoggedIn) return;
 
     let telegramId: string | undefined;
@@ -214,6 +220,7 @@ export default function StartPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (MAINTENANCE_MODE) return;
     const token = sessionStorage.getItem("token");
     if (!token) return;
     const resume = async () => {
@@ -231,6 +238,7 @@ export default function StartPage() {
   }, []);
 
   useEffect(() => {
+    if (MAINTENANCE_MODE) return;
     if (active !== "searching") return;
     const interval = setInterval(async () => {
       try {
@@ -252,6 +260,7 @@ export default function StartPage() {
   }, [active]);
 
   const handleStartGame = async () => {
+    if (MAINTENANCE_MODE) return;
     try {
       const data = await api.post<JoinResponse>("/game/join", { bid: "15", token: "USDT" });
       setCurrentMatch(data.match);
@@ -276,7 +285,7 @@ export default function StartPage() {
     return opp ?? "PlayerName";
   };
 
-  if (active === "leaderboard") {
+  if (!MAINTENANCE_MODE && active === "leaderboard") {
     return (
       <Leaderboard
         onClose={() => setActive(null)}
@@ -288,7 +297,7 @@ export default function StartPage() {
     );
   }
 
-  if (active === "game") {
+  if (!MAINTENANCE_MODE && active === "game") {
     return (
       <Game
         currentTurn={currentMatch?.currentTurn ?? "You"}
@@ -792,6 +801,7 @@ export default function StartPage() {
             ))}
         </PopupOverlay>
       )}
+      {MAINTENANCE_MODE && <PopupTechnicalWorks />}
     </div>
   );
 }
